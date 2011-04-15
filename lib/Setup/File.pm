@@ -6,9 +6,11 @@ use strict;
 use warnings;
 use Log::Any '$log';
 
+use File::chmod;
+use File::Copy::Recursive qw(rmove);
+use File::Path qw(remove_tree);
 use File::Slurp;
 use File::Temp qw(tempfile tempdir);
-use File::Copy::Recursive qw(rmove);
 use UUID::Random;
 
 require Exporter;
@@ -135,8 +137,8 @@ sub _setup_file_or_dir {
     $log->tracef("=> setup_file(path=%s)", $path);
     my $should_exist   = $args{should_exist};
     my $allow_symlink  = $args{allow_symlink} // 1;
-    my $replace_file   = $args{replace_file} // 0;
-    my $replace_dir    = $args{replace_dir} // 0;
+    my $replace_file   = $args{replace_file} // 1;
+    my $replace_dir    = $args{replace_dir} // 1;
     my $replace_sym    = $args{replace_symlink} // 1;
     my $owner          = $args{owner};
     my $group          = $args{group};
@@ -272,6 +274,7 @@ sub _setup_file_or_dir {
             or return [500, "Can't make temp dir `$tmp_dir`: $!"];
     }
 
+    my $save_undo = $undo_action ? 1:0;
     my @undo;
     return [304, "Already ok"] if $state_ok;
     return [304, "dry run"] if $dry_run;
@@ -287,10 +290,16 @@ sub _setup_file_or_dir {
                     $which eq 'dir' && !$is_dir) {
         my $uuid = UUID::Random::generate;
         my $save_path = "$tmp_dir/$uuid";
-        $log->tracef("fix: saving original file/dir/symlink to $save_path ...");
-        rmove $path, $save_path
-            or return [500, "Can't move $path -> $save_path: $!"];
-        push @undo, ['move', $save_path];
+        if ($save_undo) {
+            $log->tracef("fix: saving original to $save_path ...");
+            rmove $path, $save_path
+                or return [500, "Can't move $path -> $save_path: $!"];
+            push @undo, ['move', $save_path];
+        } else {
+            $log->tracef("fix: removing original ...");
+            remove_tree $path
+                or return [500, "Can't remove $path: $!"];
+        }
         $exists = 0;
     }
     if ($should_exist && !$exists) {
@@ -306,7 +315,7 @@ sub _setup_file_or_dir {
             }
             push @undo, ['mkfile'];
         } else {
-            unless (mkdir $path, $mode) {
+            unless (mkdir $path, $mode//0755) {
                 _undo(\%args, \@undo, 1);
                 return [500, "Can't mkdir: $!"];
             }
@@ -314,6 +323,11 @@ sub _setup_file_or_dir {
         }
     }
     if ($exists) {
+
+        my @st = stat($path);
+        my $cur_mode = $st[2] & 07777;
+        my $cur_owner = $st[4];
+        my $cur_group = $st[5];
 
         if (defined $check_ct) {
             my $content = read_file($path, err_mode=>'quiet');
@@ -336,9 +350,6 @@ sub _setup_file_or_dir {
             }
         }
 
-        my @st = stat($path);
-
-        my $cur_mode = $st[2] & 07777;
         if ($mode != $cur_mode) {
             $log->tracef("fix: setting mode to %04o ...", $mode);
             unless (chmod $mode, $path) {
@@ -348,8 +359,6 @@ sub _setup_file_or_dir {
             push @undo, ['chmod', $cur_mode];
         }
 
-        my $cur_owner = $st[4];
-        my $cur_group = $st[5];
         if (defined($owner) && $cur_owner != $owner ||
                 defined($group) && $cur_group != $group) {
             $log->tracef("fix: setting owner/group to %s/%s ...",
@@ -362,19 +371,23 @@ sub _setup_file_or_dir {
         }
 
     }
-    return [200, "OK", undef, {undo_info=>\@undo}];
+    my $meta = {};
+    $meta->{undo_info} = \@undo if $save_undo;
+    return [200, "OK", undef, $meta];
 }
 
 sub _undo {
     my ($args, $undo_list, $is_rollback) = @_;
-    return unless defined($undo_list);
+    return [200, "Nothing to do"] unless defined($undo_list);
     die "BUG: Invalid undo info, must be arrayref"
         unless ref($undo_list) eq 'ARRAY';
 
     my $path = $args->{path};
 
     my $i = 0;
-    for my $undo_step (@$undo_list) {
+    for my $undo_step (reverse @$undo_list) {
+        $log->tracef("undo[%d of 0..%d]: %s",
+                     $i, scalar(@$undo_list)-1, $undo_step);
         die "BUG: Invalid undo_step[$i], must be arrayref"
             unless ref($undo_step) eq 'ARRAY';
         my ($cmd, @arg) = @$undo_step;
@@ -386,12 +399,17 @@ sub _undo {
         } elsif ($cmd eq 'mkdir') {
             rmdir $path or $err = $!;
         } elsif ($cmd eq 'content') {
-            write_file($path, {err_mode=>'quiet', atomic=>1}, ${$arg[0]})
-                or $err = $!;
+            # XXX doesn't do atomic write here, for simplicity (doesn't have to
+            # set owner and mode again). but we probably should.
+            #write_file($path, {err_mode=>'quiet', atomic=>1}, ${$arg[0]})
+            #    or $err = $!;
+            open my($fh), ">", $path;
+            print $fh ${$arg[0]};
+            close $fh or $err = $!;
         } elsif ($cmd eq 'chmod') {
-            chmod $path, $arg[0] or $err = $!;
+            chmod $arg[0], $path or $err = $!;
         } elsif ($cmd eq 'chown') {
-            chmod $arg[0]//-1, $arg[1]//-1, $path or $err = $!;
+            chown $arg[0]//-1, $arg[1]//-1, $path or $err = $!;
         } else {
             die "BUG: Invalid undo_step[$i], unknown command: $cmd";
         }
