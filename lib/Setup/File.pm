@@ -287,7 +287,7 @@ sub _setup_file_or_dir {
     if (($exists || $is_symlink) && defined($should_exist) && !$should_exist ||
             $is_symlink && !$allow_symlink ||
                 $which eq 'file' && $is_dir ||
-                    $which eq 'dir' && !$is_dir) {
+                    $which eq 'dir' && $exists && !$is_dir) {
         my $uuid = UUID::Random::generate;
         my $save_path = "$tmp_dir/$uuid";
         if ($save_undo) {
