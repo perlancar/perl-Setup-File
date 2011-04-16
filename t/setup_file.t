@@ -264,10 +264,8 @@ test_setup_file(
     is_symlink => 0, is_dir => 1, mode => 0715,
 );
 
-# should_exist undef
-# should_exist 0
-#   test dry run
-#   test undo
+# XXX: test symbolic mode
+# XXX: test should_exist = undef
 
 DONE_TESTING:
 teardown();
