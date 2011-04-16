@@ -302,8 +302,10 @@ sub _setup_file_or_dir {
         }
         $exists = 0;
     }
+
     if ($should_exist && !$exists) {
         if ($which eq 'file') {
+            $log->tracef("fix: creating file ...");
             my $res = write_file($path,
                                  {atomic=>1, err_mode=>'quiet'},
                                  $args{gen_content_code} ?
@@ -313,18 +315,29 @@ sub _setup_file_or_dir {
                 _undo(\%args, \@undo, 1);
                 return [500, "Can't create file: $err"];
             }
+            if (defined($mode) && $mode =~ /[+=-]/) { # symbolic mode
+                # XXX: should use umask?
+                $mode = getchmod($mode, 0644);
+            }
             push @undo, ['mkfile'];
         } else {
-            unless (mkdir $path, $mode//0755) {
+            $log->tracef("fix: creating dir ...");
+            unless (mkdir $path, 0755) {
                 _undo(\%args, \@undo, 1);
                 return [500, "Can't mkdir: $!"];
             }
+            if (defined($mode) && $mode =~ /[+=-]/) { # symbolic mode
+                # XXX: should use umask?
+                $mode = getchmod($mode, 0755);
+            }
             push @undo, ['mkdir'];
         }
+        $exists = 1;
     }
+
     if ($exists) {
 
-        my @st = stat($path);
+        my @st = stat($path) or return [500, "Can't stat: $!"];
         my $cur_mode = $st[2] & 07777;
         my $cur_owner = $st[4];
         my $cur_group = $st[5];
@@ -350,7 +363,7 @@ sub _setup_file_or_dir {
             }
         }
 
-        if ($mode != $cur_mode) {
+        if (defined($mode) && $mode != $cur_mode) {
             $log->tracef("fix: setting mode to %04o ...", $mode);
             unless (chmod $mode, $path) {
                 _undo(\%args, \@undo, 1);
