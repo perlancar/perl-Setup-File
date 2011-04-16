@@ -15,6 +15,7 @@ sub setup {
     $::tmp_dir  = "$::root_dir/.undo";
     mkdir $::tmp_dir or die "Can't make tmp_dir `$::tmp_dir`: $!";
     $CWD = $::root_dir;
+    diag "test data dir is $::root_dir";
 }
 
 sub teardown {
@@ -23,7 +24,7 @@ sub teardown {
         #diag "all tests successful, deleting test data dir";
         $CWD = "/" unless $ENV{NO_CLEANUP};
     } else {
-        diag "there are failing tests, not deleting test data dir $::root_dir";
+        diag "there are failing tests, not deleting test data dir";
         #diag "tmp dir is $::tmp_dir";
     }
 }

@@ -205,7 +205,6 @@ test_setup_file(
     is_symlink => 0, is_file => 1, content => 'old', mode => 0646,
 );
 
-if (0) {
 test_setup_file(
     name       => "replace dir (dry_run)",
     presetup   => sub { mkdir "f"; chmod 0715, "f" },
@@ -264,7 +263,6 @@ test_setup_file(
     status     => 200,
     is_symlink => 0, is_dir => 1, mode => 0715,
 );
-}
 
 # should_exist undef
 # should_exist 0
