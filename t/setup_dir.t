@@ -11,7 +11,7 @@ use File::Slurp;
 use Test::More 0.96;
 require "testlib.pl";
 
-use vars qw($tmp_dir $undo_info);
+use vars qw($tmp_dir $undo_data);
 
 setup();
 
@@ -38,8 +38,8 @@ test_setup_dir(
     is_dir     => 1,
     posttest   => sub {
         my $res = shift;
-        $undo_info = $res->[3]{undo_info};
-        ok($undo_info, "there is undo info");
+        $undo_data = $res->[3]{undo_data};
+        ok($undo_data, "there is undo info");
     },
     cleanup    => 0,
 );
@@ -47,7 +47,7 @@ test_setup_dir(
     name       => "create (undo, dry_run)",
     path       => "/d",
     other_args => {should_exist=>1, -dry_run=>1,
-                   -undo_action=>"undo", -undo_info=>$undo_info},
+                   -undo_action=>"undo", -undo_data=>$undo_data},
     status     => 304,
     is_dir     => 1,
     cleanup    => 0,
@@ -56,7 +56,7 @@ test_setup_dir(
     name       => "create (undo)",
     path       => "/d",
     other_args => {should_exist=>1,
-                   -undo_action=>"undo", -undo_info=>$undo_info},
+                   -undo_action=>"undo", -undo_data=>$undo_data},
     status     => 200,
     exists     => 0,
     cleanup    => 0,
@@ -110,9 +110,9 @@ test_setup_dir(
     is_dir     => 1,
     posttest   => sub {
         my $res = shift;
-        $undo_info = $res->[3]{undo_info};
-        ok($undo_info, "there is undo info");
-        my $step = $undo_info->[0];
+        $undo_data = $res->[3]{undo_data};
+        ok($undo_data, "there is undo info");
+        my $step = $undo_data->[0];
     },
     cleanup    => 0,
 );
@@ -120,7 +120,7 @@ test_setup_dir(
     name       => "replace symlink (undo, dry_run)",
     path       => "/d",
     other_args => {should_exist=>1, allow_symlink=>0, -dry_run=>1,
-                   -undo_action=>"undo", -undo_info=>$undo_info},
+                   -undo_action=>"undo", -undo_data=>$undo_data},
     status     => 304,
     is_symlink => 0,
     is_dir     => 1,
@@ -129,15 +129,15 @@ test_setup_dir(
     name       => "replace symlink (undo)",
     path       => "/d",
     other_args => {should_exist=>1, allow_symlink=>0,
-                   -undo_action=>"undo", -undo_info=>$undo_info},
+                   -undo_action=>"undo", -undo_data=>$undo_data},
     status     => 200,
     is_symlink => 1,
     posttest   => sub {
         my ($res, $path) = @_;
-        my $step = $undo_info->[0];
-        ok(!(-l $step->[1]), "undo_info: step[0]: temp file moved");
+        my $step = $undo_data->[0];
+        ok(!(-l $step->[1]), "undo_data: step[0]: temp file moved");
         is(readlink($path), "x",
-           "undo_info: step[0]: original symlink restored");
+           "undo_data: step[0]: original symlink restored");
     },
 );
 
@@ -169,8 +169,8 @@ test_setup_dir(
     is_symlink => 0, is_dir => 1, mode => 0715,
     posttest   => sub {
         my $res = shift;
-        $undo_info = $res->[3]{undo_info};
-        ok($undo_info, "there is undo info");
+        $undo_data = $res->[3]{undo_data};
+        ok($undo_data, "there is undo info");
     },
     cleanup    => 0,
 );
@@ -178,7 +178,7 @@ test_setup_dir(
     name       => "replace dir (undo, dry_run)",
     path       => "/d",
     other_args => {-dry_run=>1, should_exist=>1, mode => 0715,
-                   -undo_action=>"undo", -undo_info=>$undo_info},
+                   -undo_action=>"undo", -undo_data=>$undo_data},
     status     => 304,
     is_symlink => 0, is_dir => 1, mode => 0715,
     cleanup    => 0,
@@ -187,7 +187,7 @@ test_setup_dir(
     name       => "replace dir (undo)",
     path       => "/d",
     other_args => {should_exist=>1, mode => 0715,
-                   -undo_action=>"undo", -undo_info=>$undo_info},
+                   -undo_action=>"undo", -undo_data=>$undo_data},
     status     => 200,
     is_symlink => 0, is_dir => 1, mode => 0751,
 );
@@ -218,8 +218,8 @@ test_setup_dir(
     is_symlink => 0, is_dir => 1, mode => 0775,
     posttest   => sub {
         my $res = shift;
-        $undo_info = $res->[3]{undo_info};
-        ok($undo_info, "there is undo info");
+        $undo_data = $res->[3]{undo_data};
+        ok($undo_data, "there is undo info");
     },
     cleanup    => 0,
 );
@@ -227,7 +227,7 @@ test_setup_dir(
     name       => "replace file (undo, dry_run)",
     path       => "/d",
     other_args => {-dry_run=>1, should_exist=>1, mode => 0775,
-                   -undo_action=>"undo", -undo_info=>$undo_info},
+                   -undo_action=>"undo", -undo_data=>$undo_data},
     status     => 304,
     is_symlink => 0, is_dir => 1, mode => 0775,
     cleanup    => 0,
@@ -236,7 +236,7 @@ test_setup_dir(
     name       => "replace file (undo)",
     path       => "/d",
     other_args => {should_exist=>1, mode => 0775,
-                   -undo_action=>"undo", -undo_info=>$undo_info},
+                   -undo_action=>"undo", -undo_data=>$undo_data},
     status     => 200,
     is_symlink => 0, is_file => 1, mode => 0664, content => "orig",
 );

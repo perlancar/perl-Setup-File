@@ -11,7 +11,7 @@ use File::Slurp;
 use Test::More 0.96;
 require "testlib.pl";
 
-use vars qw($tmp_dir $undo_info);
+use vars qw($tmp_dir $undo_data);
 
 plan skip_all => "must run as root to test changing ownership/group" if $>;
 

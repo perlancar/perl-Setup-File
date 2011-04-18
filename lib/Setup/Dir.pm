@@ -99,10 +99,10 @@ __END__
  # perform setup and save undo info (undo info should be serializable)
  $res = setup_dir ..., -undo_action => 'do';
  die unless $res->[0] == 200;
- my $undo_info = $res->[3]{undo_info};
+ my $undo_data = $res->[3]{undo_data};
 
  # perform undo
- $res = setup_dir ..., -undo_action => "undo", -undo_info=>$undo_info;
+ $res = setup_dir ..., -undo_action => "undo", -undo_data=>$undo_data;
  die unless $res->[0] == 200;
 
  # state that dir must not exist

@@ -264,8 +264,8 @@ sub _setup_file_or_dir {
         return [412, "Can't undo: dir is not empty"]
             if $which eq 'dir' && !_dir_is_empty($path);
         return [304, "dry run"] if $dry_run;
-        my $undo_info = $args{-undo_info};
-        my $res = _undo(\%args, $undo_info);
+        my $undo_data = $args{-undo_data};
+        my $res = _undo(\%args, $undo_data);
         if ($res->[0] == 200) {
             return [200, "OK", undef, {}];
         } else {
@@ -403,7 +403,7 @@ sub _setup_file_or_dir {
 
     }
     my $meta = {};
-    $meta->{undo_info} = \@undo if $save_undo;
+    $meta->{undo_data} = \@undo if $save_undo;
     return [200, "OK", undef, $meta];
 }
 
@@ -476,10 +476,10 @@ __END__
  # perform setup and save undo info (undo info should be serializable)
  $res = setup_file ..., -undo_action => 'do';
  die unless $res->[0] == 200;
- my $undo_info = $res->[3]{undo_info};
+ my $undo_data = $res->[3]{undo_data};
 
  # perform undo
- $res = setup_file ..., -undo_action => "undo", -undo_info=>$undo_info;
+ $res = setup_file ..., -undo_action => "undo", -undo_data=>$undo_data;
  die unless $res->[0] == 200;
 
  # state that file must not exist
