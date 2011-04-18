@@ -152,9 +152,21 @@ sub _setup_file_or_dir {
     # check current state
     my $is_symlink     = (-l $path);
     my $exists         = (-e _);
+    my $state_ok       = 1;
+    # -l does lstat, we need stat
+    #my @st = stat($is_symlink ? $path : _);
+    my @st             = stat($path); # stricture complains about _
+    return [500, "Can't stat (1): $!"] if $exists && !$is_symlink && !@st;
     my $is_file        = (-f _);
     my $is_dir         = (-d _);
-    my $state_ok       = 1;
+
+    # exists means whether target exists, if symlink is allowed
+    my $symlink_exists;
+    if ($allow_symlink && $is_symlink) {
+        $symlink_exists = $exists;
+        $exists = (-e _) if $symlink_exists;
+    }
+
     {
         if (defined($should_exist) && !$should_exist) {
             $log->trace("nok: $which should not exist but does") if $exists;
@@ -181,10 +193,6 @@ sub _setup_file_or_dir {
                 $state_ok = 0;
                 last;
             }
-            # -l does lstat, we need stat
-            #my @st = stat($is_symlink ? $path : _);
-            my @st = stat($path); # stricture complains about _
-            return [500, "Can't stat: $!"] unless @st;
             if (defined $mode) {
                 my $cur_mode = $st[2] & 07777;
                 $mode = getchmod($mode, $cur_mode)
@@ -304,6 +312,16 @@ sub _setup_file_or_dir {
     }
 
     if ($should_exist && !$exists) {
+        if ($is_symlink && $symlink_exists) {
+            $log->tracef("fix: removing symlink first ...");
+            my $sym_target = readlink($path);
+            unless (unlink $path) {
+                _undo(\%args, \@undo, 1);
+                return [500, "Can't remove symlink: $!"];
+            }
+            push @undo, ['mksym', $sym_target];
+        }
+
         if ($which eq 'file') {
             $log->tracef("fix: creating file ...");
             my $res = write_file($path,
@@ -337,7 +355,7 @@ sub _setup_file_or_dir {
 
     if ($exists) {
 
-        my @st = stat($path) or return [500, "Can't stat: $!"];
+        my @st = stat($path) or return [500, "Can't stat (2): $!"];
         my $cur_mode = $st[2] & 07777;
         my $cur_owner = $st[4];
         my $cur_group = $st[5];
@@ -411,6 +429,8 @@ sub _undo {
             unlink $path or $err = $!;
         } elsif ($cmd eq 'mkdir') {
             rmdir $path or $err = $!;
+        } elsif ($cmd eq 'mksym') {
+            symlink $arg[0], $path or $err = $!;
         } elsif ($cmd eq 'content') {
             # XXX doesn't do atomic write here, for simplicity (doesn't have to
             # set owner and mode again). but we probably should.

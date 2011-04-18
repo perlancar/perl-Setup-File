@@ -82,8 +82,26 @@ test_setup_file(
     name       => "allow_symlink = 1 (target doesn't exist)",
     presetup   => sub { symlink "x", "f" },
     path       => "/f",
-    other_args => {should_exist=>1, allow_symlink=>1},
-    status     => 500,
+    other_args => {should_exist=>1, allow_symlink=>1,
+                   -undo_action=>"do", -undo_hint=>{tmp_dir=>$tmp_dir}},
+    status     => 200,
+    posttest   => sub {
+        my ($res, $path) = @_;
+        ok((-f $path) && !(-l $path), "symlink replaced with file");
+        $undo_info = $res->[3]{undo_info};
+    },
+    cleanup    => 0,
+);
+test_setup_file(
+    name       => "allow_symlink = 1 (target doesn't exist, undo)",
+    path       => "/f",
+    other_args => {should_exist=>1, allow_symlink=>1,
+                   -undo_action=>"undo", -undo_info=>$undo_info},
+    status     => 200,
+    posttest   => sub {
+        my ($res, $path) = @_;
+        ok((-l $path) && !(-e $path), "symlink restored");
+    },
 );
 test_setup_file(
     name       => "allow_symlink = 1",
