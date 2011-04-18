@@ -1,5 +1,16 @@
 Revision history for Setup-File
 
+0.02    2011-04-15
+
+        [BUG FIXES]
+
+        - A couple of minor fixes, add tests, pass all tests.
+
+        [ETC]
+
+        - Change terminology: undo/redo info -> undo/redo data.
+
+
 0.01    2011-04-15
 
         - First release (tests incomplete).
