@@ -410,7 +410,7 @@ sub _setup_file_or_dir {
 sub _undo {
     my ($args, $undo_list, $is_rollback) = @_;
     return [200, "Nothing to do"] unless defined($undo_list);
-    die "BUG: Invalid undo info, must be arrayref"
+    die "BUG: Invalid undo data, must be arrayref"
         unless ref($undo_list) eq 'ARRAY';
 
     my $path = $args->{path};
@@ -465,7 +465,7 @@ __END__
 
  use Setup::File 'setup_file';
 
- # simple usage (doesn't save undo info)
+ # simple usage (doesn't save undo data)
  my $res = setup_file path => '/etc/rc.local',
                       should_exist => 1,
                       gen_content_code => sub { "#!/bin/sh\n" },
@@ -473,7 +473,7 @@ __END__
                       mode => '+x';
  die unless $res->[0] == 200;
 
- # perform setup and save undo info (undo info should be serializable)
+ # perform setup and save undo data (undo data should be serializable)
  $res = setup_file ..., -undo_action => 'do';
  die unless $res->[0] == 200;
  my $undo_data = $res->[3]{undo_data};

@@ -47,7 +47,7 @@ test_setup_file(
     posttest   => sub {
         my $res = shift;
         $undo_data = $res->[3]{undo_data};
-        ok($undo_data, "there is undo info");
+        ok($undo_data, "there is undo data");
     },
     cleanup    => 0,
 );
@@ -133,7 +133,7 @@ test_setup_file(
     posttest   => sub {
         my $res = shift;
         $undo_data = $res->[3]{undo_data};
-        ok($undo_data, "there is undo info");
+        ok($undo_data, "there is undo data");
         my $step = $undo_data->[0];
     },
     cleanup    => 0,
@@ -197,7 +197,7 @@ test_setup_file(
     posttest   => sub {
         my $res = shift;
         $undo_data = $res->[3]{undo_data};
-        ok($undo_data, "there is undo info");
+        ok($undo_data, "there is undo data");
     },
     cleanup    => 0,
 );
@@ -256,7 +256,7 @@ test_setup_file(
     posttest   => sub {
         my $res = shift;
         $undo_data = $res->[3]{undo_data};
-        ok($undo_data, "there is undo info");
+        ok($undo_data, "there is undo data");
     },
     cleanup    => 0,
 );

@@ -90,13 +90,13 @@ __END__
 
  use Setup::Dir 'setup_dir';
 
- # simple usage (doesn't save undo info)
+ # simple usage (doesn't save undo data)
  $res = setup_dir path => '/etc/myapp',
                   should_exist => 1,
                   owner => 'root', group => 0, mode => 0755;
  die unless $res->[0] == 200;
 
- # perform setup and save undo info (undo info should be serializable)
+ # perform setup and save undo data (undo data should be serializable)
  $res = setup_dir ..., -undo_action => 'do';
  die unless $res->[0] == 200;
  my $undo_data = $res->[3]{undo_data};
