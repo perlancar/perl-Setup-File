@@ -124,6 +124,7 @@ test_setup_dir(
     status     => 304,
     is_symlink => 0,
     is_dir     => 1,
+    cleanup    => 0,
 );
 test_setup_dir(
     name       => "replace symlink (undo)",
@@ -153,9 +154,7 @@ test_setup_dir(
 test_setup_dir(
     name       => "replace dir (arg mode)",
     path       => "/d",
-    other_args => {should_exist=>1, mode => 0715,
-                   check_content_code=>sub { $_[0] eq 'new' },
-                   gen_content_code=>sub { 'new' }, },
+    other_args => {should_exist=>1, mode => 0715},
     status     => 200,
     is_symlink => 0, is_dir => 1, mode => 0715,
 );
@@ -198,7 +197,7 @@ test_setup_dir(
     path       => "/d",
     other_args => {-dry_run=>1, should_exist=>1, mode => 0775},
     status     => 304,
-    is_symlink => 0, is_file => 1, mode => 0664, content => "orig",
+    is_symlink => 0, is_file => 1, mode => 0664,
     cleanup    => 0,
 );
 test_setup_dir(
@@ -212,7 +211,7 @@ test_setup_dir(
     name       => "replace file (with undo)",
     presetup   => sub { write_file "d", "orig"; chmod 0664, "d" },
     path       => "/d",
-    other_args => {should_exist=>1, mode => 0664,
+    other_args => {should_exist=>1, mode => 0775,
                    -undo_action=>"do", -undo_hint=>{tmp_dir=>$tmp_dir}},
     status     => 200,
     is_symlink => 0, is_dir => 1, mode => 0775,
@@ -238,7 +237,7 @@ test_setup_dir(
     other_args => {should_exist=>1, mode => 0775,
                    -undo_action=>"undo", -undo_data=>$undo_data},
     status     => 200,
-    is_symlink => 0, is_file => 1, mode => 0664, content => "orig",
+    is_symlink => 0, is_file => 1, mode => 0664,
 );
 
 # XXX: test symbolic mode
