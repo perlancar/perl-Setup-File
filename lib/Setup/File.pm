@@ -408,17 +408,17 @@ sub _setup_file_or_dir {
 }
 
 sub _undo {
-    my ($args, $undo_list, $is_rollback) = @_;
-    return [200, "Nothing to do"] unless defined($undo_list);
+    my ($args, $undo_data, $is_rollback) = @_;
+    return [200, "Nothing to do"] unless defined($undo_data);
     die "BUG: Invalid undo data, must be arrayref"
-        unless ref($undo_list) eq 'ARRAY';
+        unless ref($undo_data) eq 'ARRAY';
 
     my $path = $args->{path};
 
     my $i = 0;
-    for my $undo_step (reverse @$undo_list) {
+    for my $undo_step (reverse @$undo_data) {
         $log->tracef("undo[%d of 0..%d]: %s",
-                     $i, scalar(@$undo_list)-1, $undo_step);
+                     $i, scalar(@$undo_data)-1, $undo_step);
         die "BUG: Invalid undo_step[$i], must be arrayref"
             unless ref($undo_step) eq 'ARRAY';
         my ($cmd, @arg) = @$undo_step;
