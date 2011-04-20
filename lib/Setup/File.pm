@@ -132,9 +132,9 @@ sub _setup_file_or_dir {
 
     # check args
     my $path           = $args{path};
+    $log->tracef("=> setup_file(path=%s)", $path);
     $path              =~ m!^/!
         or return [400, "Please specify an absolute path"];
-    $log->tracef("=> setup_file(path=%s)", $path);
     my $should_exist   = $args{should_exist};
     my $allow_symlink  = $args{allow_symlink} // 1;
     my $replace_file   = $args{replace_file} // 1;
