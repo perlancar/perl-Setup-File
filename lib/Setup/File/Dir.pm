@@ -1,4 +1,4 @@
-package Setup::Dir;
+package Setup::File::Dir;
 # ABSTRACT: Ensure dir (non-)existence & mode/permission
 
 use 5.010;
@@ -88,7 +88,7 @@ __END__
 
 =head1 SYNOPSIS
 
- use Setup::Dir 'setup_dir';
+ use Setup::File::Dir 'setup_dir';
 
  # simple usage (doesn't save undo data)
  $res = setup_dir path => '/etc/myapp',

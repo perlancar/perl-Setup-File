@@ -7,7 +7,7 @@ use File::Path qw(remove_tree);
 use File::Spec;
 use File::Slurp;
 use File::Temp qw(tempdir);
-use Setup::Dir  qw(setup_dir);
+use Setup::File::Dir qw(setup_dir);
 use Setup::File qw(setup_file);
 use Test::More 0.96;
 
