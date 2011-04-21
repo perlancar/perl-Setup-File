@@ -4,6 +4,7 @@ use warnings;
 
 use File::chdir;
 use File::Path qw(remove_tree);
+use File::Spec;
 use File::Slurp;
 use File::Temp qw(tempdir);
 use Setup::Dir  qw(setup_dir);
@@ -11,6 +12,9 @@ use Setup::File qw(setup_file);
 use Test::More 0.96;
 
 sub setup {
+    plan skip_all => "Not Unix-y enough (absolute path doesn't start with /)"
+        unless File::Spec->rel2abs("") =~ m!^/!;
+
     $::root_dir = tempdir(CLEANUP=>1);
     $::tmp_dir  = "$::root_dir/.undo";
     mkdir $::tmp_dir or die "Can't make tmp_dir `$::tmp_dir`: $!";
