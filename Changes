@@ -1,5 +1,14 @@
 Revision history for Setup-File
 
+0.03    2011-04-21
+
+        No functional changes.
+
+        [INCOMPATIBLE CHANGE]
+
+        - Rename module Setup::Dir -> Setup::File::Dir.
+
+
 0.02    2011-04-18
 
         [BUG FIXES]
