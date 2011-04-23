@@ -507,8 +507,8 @@ characteristics:
 
 =item * used to reach some desired state
 
-For example, Setup::Symlink::setup_symlink makes sure a symlink exists to the
-desired target. Setup::File::setup_file makes sure a file exists with the
+For example, Setup::File::Symlink::setup_symlink makes sure a symlink exists to
+the desired target. Setup::File::setup_file makes sure a file exists with the
 correct content/ownership/permission.
 
 =item * do nothing if desired state has been reached
