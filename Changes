@@ -1,5 +1,15 @@
 Revision history for Setup-File
 
+0.04    2011-04-27
+
+        [ENHANCEMENTS]
+
+        - (Internal) restructure/refactor, undo is now more flexible.
+
+        - In undo, only delete previously created file if content hasn't
+          changed.
+
+
 0.03    2011-04-21
 
         No functional changes.
