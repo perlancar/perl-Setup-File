@@ -123,24 +123,8 @@ This module's functions have L<Sub::Spec> specs.
 =head1 THE SETUP MODULES FAMILY
 
 I use the C<Setup::> namespace for the Setup modules family, typically used in
-installers (or other applications). The modules in Setup family have these
-characteristics:
-
-=over 4
-
-=item * used to reach some desired state
-
-For example, Setup::File::Symlink::setup_symlink makes sure a symlink exists to
-the desired target. Setup::File::setup_file makes sure a file exists with the
-correct content/ownership/permission.
-
-=item * do nothing if desired state has been reached
-
-=item * support dry-run (simulation) mode
-
-=item * support undo to restore state to previous/original one
-
-=back
+installers (or other applications). See L<Setup::File::Symlink> for more details
+about the Setup modules family.
 
 
 =head1 FUNCTIONS
