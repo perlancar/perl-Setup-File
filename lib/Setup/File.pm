@@ -6,6 +6,7 @@ use strict;
 use warnings;
 use Log::Any '$log';
 
+use Digest::MD5 qw(md5_hex);
 use File::chmod;
 use File::Copy::Recursive qw(rmove);
 use File::Path qw(remove_tree);
@@ -22,6 +23,11 @@ our %SPEC;
 $SPEC{setup_file} = {
     summary  => "Ensure file (non-)existence, mode/permission, and content",
     description => <<'_',
+On do, will create file (if it doesn't already exist) and correct
+mode/permission as well as content.
+
+On undo, will restore old mode/permission/content, or delete the file again if
+it was created by this function *and* its content hasn't changed since.
 
 If given, -undo_hint should contain {tmp_dir=>...} to specify temporary
 directory to save replaced file/dir. Temporary directory defaults to ~/.setup,
@@ -132,7 +138,6 @@ sub _setup_file_or_dir {
 
     # check args
     my $path           = $args{path};
-    $log->tracef("=> setup_file(path=%s)", $path);
     $path              =~ m!^/!
         or return [400, "Please specify an absolute path"];
     my $should_exist   = $args{should_exist};
@@ -148,11 +153,11 @@ sub _setup_file_or_dir {
     return [400, "If check_content_code is specified, ".
                 "gen_content_code must also be specified"]
         if defined($check_ct) && !defined($gen_ct);
+    my $cur_content;
 
-    # check current state
+    # check current state and collect steps
     my $is_symlink     = (-l $path);
     my $exists         = (-e _);
-    my $state_ok       = 1;
     # -l does lstat, we need stat
     #my @st = stat($is_symlink ? $path : _);
     my @st             = stat($path); # stricture complains about _
@@ -160,37 +165,55 @@ sub _setup_file_or_dir {
     my $is_file        = (-f _);
     my $is_dir         = (-d _);
 
-    # exists means whether target exists, if symlink is allowed
+    # exists means whether *target* exists, if symlink is allowed. while
+    # symlink_exists means the symlink itself exists.
     my $symlink_exists;
     if ($allow_symlink && $is_symlink) {
         $symlink_exists = $exists;
         $exists = (-e _) if $symlink_exists;
     }
 
-    {
-        if (defined($should_exist) && !$should_exist) {
-            $log->trace("nok: $which should not exist but does") if $exists;
-            $state_ok = !$exists;
-            last;
-        }
-        if ($should_exist && !$exists) {
-            $log->trace("nok: $which should exist but doesn't");
-            $state_ok = 0;
-            last;
-        }
-        if (!$allow_symlink && $is_symlink) {
-            $log->trace("nok: $which should not be symlink but is");
-            $state_ok = 0;
-            last;
-        }
-        if ($exists) {
+    my $steps;
+    if ($undo_action eq 'undo') {
+        $steps = $args{-undo_data} or return [400, "Please supply -undo_data"];
+    } elsif ($undo_action eq 'redo') {
+        $steps = $args{-redo_data} or return [400, "Please supply -redo_data"];
+    } else {
+        $steps = [];
+        {
+            if (defined($should_exist) && !$should_exist && $exists) {
+                $log->trace("nok: $which should not exist but does");
+                push @$steps, [$is_dir ? "rm_r" : "rmfile"];
+                last;
+            }
+            if ($should_exist && !$exists) {
+                $log->trace("nok: $which should exist but doesn't");
+                push @$steps, ["rmsym"] if $symlink_exists;
+                push @$steps, ["create"];
+                last;
+            }
+            if (!$allow_symlink && $is_symlink) {
+                $log->trace("nok: $which should not be symlink but is");
+                if (!$replace_sym) {
+                    return [412, "must replace symlink but instructed not to"];
+                }
+                push @$steps, ["rmsym"], ["create"];
+                last;
+            }
+            last unless $exists;
             if ($is_dir && $which eq 'file') {
                 $log->trace("nok: file expected but is dir");
-                $state_ok = 0;
+                if (!$replace_dir) {
+                    return [412, "must replace dir but instructed not to"];
+                }
+                push @$steps, ["rm_r"], ["create"];
                 last;
             } elsif (!$is_dir && $which eq 'dir') {
                 $log->trace("nok: dir expected but is file");
-                $state_ok = 0;
+                if (!$replace_file) {
+                    return [412, "must replace file but instructed not to"];
+                }
+                push @$steps, ["rm_r"], ["create"];
                 last;
             }
             if (defined $mode) {
@@ -201,8 +224,7 @@ sub _setup_file_or_dir {
                     $log->tracef("nok: $which mode is %04o, ".
                                      "but it should be %04o",
                                  $cur_mode, $mode);
-                    $state_ok = 0;
-                    last;
+                    push @$steps, ["chmod", $mode];
                 }
             }
             if (defined $owner) {
@@ -219,8 +241,7 @@ sub _setup_file_or_dir {
                     $log->tracef("nok: $which owner is %s but it should be %s",
                                  @pwc ? $pwc[0] : $cur_owner,
                                  @pw ? $pw[0] : $owner);
-                    $state_ok = 0;
-                    last;
+                    push @$steps, ["chown", $owner];
                 }
             }
             if (defined $group) {
@@ -237,225 +258,212 @@ sub _setup_file_or_dir {
                     $log->tracef("nok: $which group is %s but it should be %s",
                                  @grc ? $grc[0] : $cur_group,
                                  @gr ? $gr[0] : $group);
-                    $state_ok = 0;
-                    last;
+                    push @$steps, ["chown", undef, $owner];
                 }
             }
             if (defined $check_ct) {
-                my $content = read_file($path, err_mode=>'quiet');
+                $cur_content = read_file($path, err_mode=>'quiet');
                 return [500, "Can't read file content: $!"]
-                    unless defined($content);
-                my $res = $check_ct->($content);
+                    unless defined($cur_content);
+                my $res = $check_ct->(\$cur_content);
                 unless ($res) {
                     $log->tracef("nok: file content fails check_content_code");
-                    $state_ok = 0;
-                    last;
+                    push @$steps, ["set_content", \($gen_ct->(\$cur_content))];
                 }
             }
-
-        } else {
-            $state_ok = 0;
         }
     }
 
-    if ($undo_action eq 'undo') {
-        return [412, "Can't undo: $which has vanished/changed"]
-            unless $state_ok;
-        return [412, "Can't undo: dir is not empty"]
-            if $which eq 'dir' && !_dir_is_empty($path);
-        return [304, "dry run"] if $dry_run;
-        my $undo_data = $args{-undo_data};
-        my $res = _undo(\%args, $undo_data);
-        if ($res->[0] == 200) {
-            return [200, "OK", undef, {}];
-        } else {
-            return $res;
-        }
-    }
+    return [400, "Invalid steps, must be an array"]
+        unless $steps && ref($steps) eq 'ARRAY';
+    return [200, "Dry run"] if $dry_run && @$steps;
 
+    # create tmp dir for undo
+    my $save_undo    = $undo_action ? 1:0;
     my $undo_hint = $args{-undo_hint} // {};
     return [400, "Invalid -undo_hint, please supply a hashref"]
         unless ref($undo_hint) eq 'HASH';
     my $tmp_dir = $undo_hint->{tmp_dir} // "$ENV{HOME}/.setup";
-    unless (-d $tmp_dir) {
-        mkdir $tmp_dir, 0777
-            or return [500, "Can't make temp dir `$tmp_dir`: $!"];
+    if ($save_undo && !(-d $tmp_dir) && !$dry_run) {
+        mkdir $tmp_dir or return [500, "Can't make temp dir `$tmp_dir`: $!"];
     }
+    my $save_path = "$tmp_dir/".UUID::Random::generate;
 
-    my $save_undo = $undo_action ? 1:0;
-    my @undo;
-    return [304, "Already ok"] if $state_ok;
-    return [304, "dry run"] if $dry_run;
-    return [412, "dir should be replaced with file but I'm instructed not to"]
-        if $which eq 'file' && $is_dir && !$replace_dir;
-    return [412, "file should be replaced with dir but I'm instructed not to"]
-        if $which eq 'dir' && !$is_dir && !$replace_file;
-    return [412, "symlink should be replaced but I'm instructed not to"]
-        if $is_symlink && !$allow_symlink && !$replace_sym;
-    if (($exists || $is_symlink) && defined($should_exist) && !$should_exist ||
-            $is_symlink && !$allow_symlink ||
-                $which eq 'file' && $is_dir ||
-                    $which eq 'dir' && $exists && !$is_dir) {
-        my $uuid = UUID::Random::generate;
-        my $save_path = "$tmp_dir/$uuid";
-        if ($save_undo) {
-            $log->tracef("fix: saving original to $save_path ...");
-            rmove $path, $save_path
-                or return [500, "Can't move $path -> $save_path: $!"];
-            push @undo, ['move_to_path', $save_path];
-        } else {
-            $log->tracef("fix: removing original ...");
-            remove_tree $path
-                or return [500, "Can't remove $path: $!"];
-        }
-        $exists = 0;
-    }
-
-    if ($should_exist && !$exists) {
-        if ($is_symlink && $symlink_exists) {
-            $log->tracef("fix: removing symlink first ...");
-            my $sym_target = readlink($path);
-            unless (unlink $path) {
-                _undo(\%args, \@undo, 1);
-                return [500, "Can't remove symlink: $!"];
-            }
-            push @undo, ['rmsym', $sym_target];
-        }
-
-        if ($which eq 'file') {
-            $log->tracef("fix: creating file ...");
-            my $res = write_file($path,
-                                 {atomic=>1, err_mode=>'quiet'},
-                                 $args{gen_content_code} ?
-                                     $args{gen_content_code}->() : "");
-            my $err = $!;
-            if (!$res) {
-                _undo(\%args, \@undo, 1);
-                return [500, "Can't create file: $err"];
-            }
-            if (defined($mode) && $mode =~ /[+=-]/) { # symbolic mode
-                # XXX: should use umask?
-                $mode = getchmod($mode, 0644);
-            }
-            push @undo, ['rmfile'];
-        } else {
-            $log->tracef("fix: creating dir ...");
-            unless (mkdir $path, 0755) {
-                _undo(\%args, \@undo, 1);
-                return [500, "Can't mkdir: $!"];
-            }
-            if (defined($mode) && $mode =~ /[+=-]/) { # symbolic mode
-                # XXX: should use umask?
-                $mode = getchmod($mode, 0755);
-            }
-            push @undo, ['rmdir'];
-        }
-        $exists = 1;
-    }
-
-    if ($exists) {
-
-        my @st = stat($path) or return [500, "Can't stat (2): $!"];
-        my $cur_mode = $st[2] & 07777;
-        my $cur_owner = $st[4];
-        my $cur_group = $st[5];
-
-        if (defined $check_ct) {
-            my $content = read_file($path, err_mode=>'quiet');
-            defined($content) or do {
-                _undo(\%args, \@undo, 1);
-                return [500, "Can't read file content: $!"];
-            };
-            if (!$check_ct->($content)) {
-                $log->tracef("fix: resetting file content to ".
-                                 "expected content ...");
-                my $res = write_file($path,
-                                     {atomic=>1, err_mode=>'quiet'},
-                                     $gen_ct->($content));
-                my $err = $!;
-                if (!$res) {
-                    _undo(\%args, \@undo, 1);
-                    return [500, "Can't set file content: $!"];
-                }
-                push @undo, ['set_content', \$content];
-            }
-        }
-
-        if (defined($mode) && $mode != $cur_mode) {
-            $log->tracef("fix: setting mode to %04o ...", $mode);
-            unless (chmod $mode, $path) {
-                _undo(\%args, \@undo, 1);
-                return [500, "Can't chmod: $!"];
-            }
-            push @undo, ['chmod', $cur_mode];
-        }
-
-        if (defined($owner) && $cur_owner != $owner ||
-                defined($group) && $cur_group != $group) {
-            $log->tracef("fix: setting owner/group to %s/%s ...",
-                         $owner, $group);
-            unless (chown $owner//-1, $group//-1, $path) {
-                _undo(\%args, \@undo, 1);
-                return [500, "Can't chown: $!"];
-            }
-            push @undo, ['chown', $cur_owner, $cur_group];
-        }
-
-    }
-    my $meta = {};
-    $meta->{undo_data} = \@undo if $save_undo;
-    return [200, "OK", undef, $meta];
-}
-
-sub _undo {
-    my ($args, $undo_data, $is_rollback) = @_;
-    return [200, "Nothing to do"] unless defined($undo_data);
-    die "BUG: Invalid undo data, must be arrayref"
-        unless ref($undo_data) eq 'ARRAY';
-
-    my $path = $args->{path};
-
-    my $i = 0;
-    for my $undo_step (reverse @$undo_data) {
-        $log->tracef("undo[%d of 0..%d]: %s",
-                     $i, scalar(@$undo_data)-1, $undo_step);
-        die "BUG: Invalid undo_step[$i], must be arrayref"
-            unless ref($undo_step) eq 'ARRAY';
-        my ($cmd, @arg) = @$undo_step;
+    # perform the steps
+    my $rollback;
+    my $undo_steps = [];
+  STEPS:
+    for my $i (0..@$steps-1) {
+        my $step = $steps->[$i];
+        next unless defined $step; # can happen even when steps=[], due to redo
+        $log->tracef("step %d of 0..%d: %s", $i, @$steps-1, $step);
         my $err;
-        if ($cmd eq 'move_to_path') {
-            rmove $arg[0], $path or $err = "$! ($arg[0])";
-        } elsif ($cmd eq 'rmfile') {
-            unlink $path or $err = $!;
-        } elsif ($cmd eq 'rmdir') {
-            rmdir $path or $err = $!;
-        } elsif ($cmd eq 'rmsym') {
-            symlink $arg[0], $path or $err = $!;
-        } elsif ($cmd eq 'set_content') {
-            # XXX doesn't do atomic write here, for simplicity (doesn't have to
-            # set owner and mode again). but we probably should.
-            #write_file($path, {err_mode=>'quiet', atomic=>1}, ${$arg[0]})
-            #    or $err = $!;
-            open my($fh), ">", $path;
-            print $fh ${$arg[0]};
-            close $fh or $err = $!;
-        } elsif ($cmd eq 'chmod') {
-            chmod $arg[0], $path or $err = $!;
-        } elsif ($cmd eq 'chown') {
-            chown $arg[0]//-1, $arg[1]//-1, $path or $err = $!;
+        return [400, "Invalid step (not array)"] unless ref($step) eq 'ARRAY';
+        if ($step->[0] eq 'rmsym') {
+            if ((-l $path) || (-e _)) {
+                my $t = readlink($path) // "";
+                if (unlink $path) {
+                    unshift @$undo_steps, ["ln", $t];
+                } else {
+                    $err = "Can't remove $path: $!";
+                }
+            }
+        } elsif ($step->[0] eq 'ln') {
+            my $t = $step->[1];
+            unless ((-l $path) && readlink($path) eq $t) {
+                if (symlink $t, $path) {
+                    unshift @$undo_steps, ["rmsym"];
+                } else {
+                    $err = "Can't symlink $path -> $t: $!";
+                }
+            }
+        } elsif ($step->[0] eq 'rm_r') {
+            if ((-l $path) || (-e _)) {
+                # do not bother to save file/dir if not asked
+                if ($save_undo) {
+                    if (rmove $path, $save_path) {
+                        unshift @$undo_steps, ["restore", $save_path];
+                    } else {
+                        $err = "Can't move file/dir $path -> $save_path: $!";
+                    }
+                } else {
+                    remove_tree($path, {error=>\my $e});
+                    if (@$e) {
+                        $err = "Can't remove file/dir $path: ".dumpp($e);
+                    }
+                }
+            }
+        } elsif ($step->[0] eq 'rmfile') {
+            # will only delete if content is unchanged from time of create,
+            # content is represented by hash
+            if ((-l $path) || (-e _)) {
+                my $ct = read_file($path, err_mode=>'quiet');
+                if (!defined($ct)) {
+                    $err = "Can't read file: $!";
+                } else {
+                    my $ct_hash = md5_hex($ct);
+                    if ($ct_hash ne $step->[1]) {
+                        $log->warn("File content has changed, not removing");
+                    } else {
+                        if (unlink $path) {
+                            unshift @$undo_steps, ["create", \$ct];
+                        } else {
+                            $err = "Can't unlink $path: $!";
+                        }
+                    }
+                }
+            }
+        } elsif ($step->[0] eq 'rmdir') {
+            if ((-l $path) || (-e _)) {
+                if (rmdir $path) {
+                    unshift @$undo_steps, ["create"];
+                } else {
+                    $err = "Can't rmdir $path: $!";
+                }
+            }
+        } elsif ($step->[0] eq 'restore') {
+            if ((-l $path) || (-e _)) {
+                $err = "Can't restore $step->[1] -> $path: already exists";
+            } elsif (rmove $step->[1], $path) {
+                unshift @$undo_steps, ["rm_r"];
+            } else {
+                $err = "Can't restore $step->[1] -> $path: $!";
+            }
+        } elsif ($step->[0] eq 'create') {
+            if ((-l $path) || (-e _)) {
+                $err = "Can't create $path: already exists";
+            } else {
+                {
+                    if ($which eq 'dir') {
+                        mkdir $path
+                            or do { $err = "Can't mkdir: $!"; last };
+                        chown $owner//-1, $group//-1, $path
+                            or do { $err = "Can't chown: $!"; last };
+                        defined($mode) and chmod $mode, $path ||
+                            do { $err = "Can't chmod: $!"; last };
+                        unshift @$undo_steps, ["rmdir"];
+                    } else {
+                        my $ct;
+                        if (defined $step->[1]) {
+                            $ct = $step->[1];
+                        } else {
+                            $ct = $gen_ct ? $gen_ct->(\$cur_content) : "";
+                        }
+                        my $ct_hash = md5_hex($ct);
+                        write_file($path, {err_mode=>'quiet', atomic=>1}, $ct)
+                            or do { $err = "Can't write file: $!"; last };
+                        chown $owner//-1, $group//-1, $path
+                            or do { $err = "Can't chown: $!"; last };
+                        defined($mode) and chmod $mode, $path ||
+                            do { $err = "Can't chmod: $!"; last };
+                        unshift @$undo_steps, ["rmfile", $ct_hash];
+                    }
+                }
+            }
+        } elsif ($step->[0] eq 'set_content') {
+            {
+                my $cur_content = read_file($path, err_mode=>'quiet');
+                defined($cur_content)
+                    or do { $err = "Can't read file: $!"; last };
+                write_file($path, {err_mode=>'quiet', atomic=>1}, ${$step->[1]})
+                    or do { $err = "Can't write file: $!"; last };
+                unshift @$undo_steps, ["set_content", \$cur_content];
+                # need to chown + chmod temporary file again
+                chown $owner//-1, $group//-1, $path
+                    or do { $log->warn("Can't chown: $!") };
+                defined($mode) and chmod $mode, $path ||
+                    do { $log->warn("Can't chmod: $!") };
+            }
+        } elsif ($step->[0] eq 'chmod') {
+            my @st = lstat($path);
+            if (!@st) {
+                $log->warn("Can't stat, skipping chmod");
+            } else {
+                if (chmod $step->[1], $path) {
+                    unshift @$undo_steps, ["chmod", $st[2] & 07777];
+                } else {
+                    $err = $!;
+                }
+            }
+        } elsif ($step->[0] eq 'chown') {
+            my @st = lstat($path);
+            if (!@st) {
+                $log->warn("Can't stat, skipping chmod");
+            } else {
+                if (chown $step->[1]//-1, $step->[2]//-1, $path) {
+                    unshift @$undo_steps,
+                        ["chown",
+                         defined($step->[1]) ? $st[4] : undef,
+                         defined($step->[2]) ? $st[5] : undef];
+                } else {
+                    $err = $!;
+                }
+            }
         } else {
-            die "BUG: Invalid undo_step[$i], unknown command: $cmd";
+            die "BUG: Unknown step command: $step->[0]";
         }
         if ($err) {
-            if ($is_rollback) {
-                die "Can't rollback step[$i] ($cmd): $err";
+            if ($rollback) {
+                die "Failed rollback step $i of 0..".(@$steps-1).": $err";
             } else {
-                return [500, "Can't undo step[$i] ($cmd): $err"];
+                $log->tracef("Step failed: $err, performing rollback (%s)...",
+                             $undo_steps);
+                $rollback = $err;
+                $steps = $undo_steps;
+                redo STEPS;
             }
         }
-        $i++;
     }
-    [200, "OK"];
+    return [500, "Error (rollbacked): $rollback"] if $rollback;
+
+    my $meta = {};
+    if ($undo_action =~ /^(re)?do$/) { $meta->{undo_data} = $undo_steps }
+    elsif ($undo_action eq 'undo')   { $meta->{redo_data} = $undo_steps }
+    $log->tracef("meta: %s", $meta);
+    return [@$steps ? 200 : 304,
+            @$steps ? "OK" : "Nothing done",
+            undef,
+            $meta];
 }
 
 1;
@@ -518,6 +526,15 @@ correct content/ownership/permission.
 =item * support undo to restore state to previous/original one
 
 =back
+
+This is the general logic flow of a typical setup function (for more details,
+delve directly into source code): first, setup an empty list of steps. Then do a
+series of state check. If a state is incorrect, add a step to fix that
+situation. Proceed to the next state check. In the end, we end up with the list
+of steps. Return 304 if list if empty (meaning all desired states have been
+reached). Otherwise, perform each step consequently, while also append to list
+of undo steps for each step. If an error is encountered, perform a roll back
+(using the undo steps). If all steps have been done, return 200.
 
 
 =head1 FUNCTIONS

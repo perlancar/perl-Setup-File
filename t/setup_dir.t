@@ -19,7 +19,7 @@ test_setup_dir(
     name       => "create (dry run)",
     path       => "/d",
     other_args => {should_exist=>1, -dry_run=>1},
-    status     => 304,
+    status     => 200,
     exists     => 0,
 );
 test_setup_dir(
@@ -48,7 +48,7 @@ test_setup_dir(
     path       => "/d",
     other_args => {should_exist=>1, -dry_run=>1,
                    -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 304,
+    status     => 200,
     is_dir     => 1,
     cleanup    => 0,
 );
@@ -67,7 +67,7 @@ test_setup_dir(
     presetup   => sub { symlink "x", "d" },
     path       => "/d",
     other_args => {-dry_run=>1, should_exist=>1, allow_symlink=>0},
-    status     => 304,
+    status     => 200,
     is_symlink => 1,
 );
 test_setup_dir(
@@ -121,7 +121,7 @@ test_setup_dir(
     path       => "/d",
     other_args => {should_exist=>1, allow_symlink=>0, -dry_run=>1,
                    -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 304,
+    status     => 200,
     is_symlink => 0,
     is_dir     => 1,
     cleanup    => 0,
@@ -147,7 +147,7 @@ test_setup_dir(
     presetup   => sub { mkdir "d", 0751 },
     path       => "/d",
     other_args => {-dry_run=>1, should_exist=>1, mode => 0715},
-    status     => 304,
+    status     => 200,
     is_symlink => 0, is_dir => 1, mode => 0751,
     cleanup    => 0,
 );
@@ -178,7 +178,7 @@ test_setup_dir(
     path       => "/d",
     other_args => {-dry_run=>1, should_exist=>1, mode => 0715,
                    -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 304,
+    status     => 200,
     is_symlink => 0, is_dir => 1, mode => 0715,
     cleanup    => 0,
 );
@@ -196,7 +196,7 @@ test_setup_dir(
     presetup   => sub { write_file "d", "orig"; chmod 0664, "d" },
     path       => "/d",
     other_args => {-dry_run=>1, should_exist=>1, mode => 0775},
-    status     => 304,
+    status     => 200,
     is_symlink => 0, is_file => 1, mode => 0664,
     cleanup    => 0,
 );
@@ -227,7 +227,7 @@ test_setup_dir(
     path       => "/d",
     other_args => {-dry_run=>1, should_exist=>1, mode => 0775,
                    -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 304,
+    status     => 200,
     is_symlink => 0, is_dir => 1, mode => 0775,
     cleanup    => 0,
 );
