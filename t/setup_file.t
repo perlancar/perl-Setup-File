@@ -69,6 +69,43 @@ test_setup_file(
     exists     => 0,
     cleanup    => 0,
 );
+test_setup_file(
+    name       => "create (reapply undo, still ok)",
+    path       => "/f",
+    other_args => {should_exist=>1,
+                   -undo_action=>"undo", -undo_data=>$undo_data},
+    status     => 200,
+    exists     => 0,
+    cleanup    => 0,
+);
+
+test_setup_file(
+    name       => "create 2 (with undo, testing changed state between do-undo)",
+    path       => "/f",
+    other_args => {should_exist=>1,
+                   gen_content=>sub{"old"},
+                   -undo_action=>"do", -undo_hint=>{tmp_dir=>$tmp_dir}},
+    status     => 200,
+    is_file    => 1,
+    posttest   => sub {
+        my $res = shift;
+        $undo_data = $res->[3]{undo_data};
+    },
+    cleanup    => 0,
+);
+test_setup_file(
+    name       => "create 2 (undo, won't delete cause content changed)",
+    presetup   => sub { write_file "f", "new" },
+    path       => "/f",
+    other_args => {should_exist=>1,
+                   -undo_action=>"undo", -undo_data=>$undo_data},
+    status     => 200,
+    is_file    => 1,
+    posttest   => sub {
+        my $res = shift;
+        is(read_file("f"), "new", "content not modified");
+    },
+);
 
 test_setup_file(
     name       => "replace symlink (dry_run)",
