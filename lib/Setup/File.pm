@@ -479,19 +479,16 @@ __END__
                       gen_content_code => sub { "#!/bin/sh\n" },
                       owner => 'root', group => 0,
                       mode => '+x';
- die unless $res->[0] == 200;
+ die unless $res->[0] == 200 || $res->[0] == 304;
 
  # perform setup and save undo data (undo data should be serializable)
  $res = setup_file ..., -undo_action => 'do';
- die unless $res->[0] == 200;
+ die unless $res->[0] == 200 || $res->[0] == 304;
  my $undo_data = $res->[3]{undo_data};
 
  # perform undo
  $res = setup_file ..., -undo_action => "undo", -undo_data=>$undo_data;
- die unless $res->[0] == 200;
-
- # state that file must not exist
- setup_file path => '/foo/bar', should_exist => 0;
+ die unless $res->[0] == 200 || $res->[0] == 304;
 
 
 =head1 DESCRIPTION
