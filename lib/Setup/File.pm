@@ -294,7 +294,7 @@ sub _setup_file_or_dir {
     # perform the steps
     my $rollback;
     my $undo_steps = [];
-  STEPS:
+  STEP:
     for my $i (0..@$steps-1) {
         my $step = $steps->[$i];
         next unless defined $step; # can happen even when steps=[], due to redo
@@ -452,7 +452,7 @@ sub _setup_file_or_dir {
                              $undo_steps);
                 $rollback = $err;
                 $steps = $undo_steps;
-                redo STEPS;
+                goto STEP; # perform steps all over again
             }
         }
     }
