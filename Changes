@@ -1,5 +1,21 @@
 Revision history for Setup-File
 
+0.05    2011-04-28
+
+        [INCOMPATIBLE CHANGES]
+
+        - Update undo protocol to Sub::Spec 0.13, there's no longer redo_data,
+          only undo_data.
+
+        [DOCUMENTATION]
+
+        - A bit more documentation on Setup:: modules family.
+
+        [BUG FIXES]
+
+        - Some fixes.
+
+
 0.04    2011-04-27
 
         [ENHANCEMENTS]
