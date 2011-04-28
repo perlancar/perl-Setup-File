@@ -115,7 +115,11 @@ _
     },
     features => {undo=>1, dry_run=>1},
 };
-sub setup_file { _setup_file_or_dir('file', @_) }
+sub setup_file {
+    my %args = @_;
+    $log->tracef("=> setup_file(%s)", \%args); # TMP
+    _setup_file_or_dir('file', %args);
+}
 
 # return 1 if dir exists and empty
 sub _dir_is_empty {

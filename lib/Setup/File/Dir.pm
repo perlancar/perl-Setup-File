@@ -81,7 +81,11 @@ _
     },
     features => {undo=>1, dry_run=>1},
 };
-sub setup_dir  { Setup::File::_setup_file_or_dir('dir' , @_) }
+sub setup_dir  {
+    my %args = @_;
+    $log->tracef("=> setup_dir(%s)", \%args); # TMP
+    Setup::File::_setup_file_or_dir('dir' , %args);
+}
 
 1;
 __END__
