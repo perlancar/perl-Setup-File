@@ -1,5 +1,5 @@
 package Setup::File::Dir;
-# ABSTRACT: Ensure dir (non-)existence & mode/permission
+# ABSTRACT: Setup directory (existence, mode, permission)
 
 use 5.010;
 use strict;
@@ -15,8 +15,14 @@ our @EXPORT_OK = qw(setup_dir);
 our %SPEC;
 
 $SPEC{setup_dir} = {
-    summary  => "Ensure directory (non-)existence and mode/permission",
+    summary  => "Setup directory (existence, mode, permission)",
     description => <<'_',
+
+On do, will create directory (if it doesn't already exist) and fix its
+mode/permission.
+
+On undo, will restore old mode/permission (and delete directory if it is empty
+and was created by this function).
 
 If given, -undo_hint should contain {tmp_dir=>...} to specify temporary
 directory to save replaced file/dir. Temporary directory defaults to ~/.setup,

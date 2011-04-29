@@ -1,5 +1,5 @@
 package Setup::File;
-# ABSTRACT: Ensure file (non-)existence, mode/permission, and content
+# ABSTRACT: Setup file (existence, mode, permission, content)
 
 use 5.010;
 use strict;
@@ -21,8 +21,9 @@ our @EXPORT_OK = qw(setup_file);
 our %SPEC;
 
 $SPEC{setup_file} = {
-    summary  => "Ensure file (non-)existence, mode/permission, and content",
+    summary  => "Setup file (existence, mode, permission, content)",
     description => <<'_',
+
 On do, will create file (if it doesn't already exist) and correct
 mode/permission as well as content.
 
