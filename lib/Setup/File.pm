@@ -118,7 +118,6 @@ _
 };
 sub setup_file {
     my %args = @_;
-    $log->tracef("=> setup_file(%s)", \%args); # TMP
     _setup_file_or_dir('file', %args);
 }
 
