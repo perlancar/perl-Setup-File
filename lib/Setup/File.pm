@@ -142,6 +142,7 @@ sub _setup_file_or_dir {
 
     # check args
     my $path           = $args{path};
+    $path or return [400, "Please specify path"];
     $path              =~ m!^/!
         or return [400, "Please specify an absolute path"];
     my $should_exist   = $args{should_exist};
