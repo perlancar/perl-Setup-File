@@ -364,7 +364,7 @@ sub _setup_file_or_dir {
                     $err = "Can't read file: $!";
                 } else {
                     my $ct_hash = md5_hex($ct);
-                    if ($ct_hash ne $step->[1]) {
+                    if (defined($step->[1]) && $ct_hash ne $step->[1]) {
                         $log->warn("File content has changed, not removing");
                     } else {
                         if (unlink $path) {
@@ -410,7 +410,8 @@ sub _setup_file_or_dir {
                             $ct = $step->[1];
                         } else {
                             $ct = $gen_ct ? $gen_ct->(\$cur_content) :
-                                defined($content) ? $content : "";
+                                $content;
+                            $ct //= "";
                         }
                         my $ct_hash = md5_hex($ct);
                         write_file($path, {err_mode=>'quiet', atomic=>1}, $ct)
