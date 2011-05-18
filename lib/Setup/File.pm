@@ -202,18 +202,18 @@ sub _setup_file_or_dir {
         $steps = [];
         {
             if (defined($should_exist) && !$should_exist && $exists) {
-                $log->trace("nok: $which should not exist but does");
+                $log->info("nok: $which should not exist but does");
                 push @$steps, [$is_dir ? "rm_r" : "rmfile"];
                 last;
             }
             if ($should_exist && !$exists) {
-                $log->trace("nok: $which should exist but doesn't");
+                $log->info("nok: $which should exist but doesn't");
                 push @$steps, ["rmsym"] if $symlink_exists;
                 push @$steps, ["create"];
                 last;
             }
             if (!$allow_symlink && $is_symlink) {
-                $log->trace("nok: $which should not be symlink but is");
+                $log->info("nok: $which should not be symlink but is");
                 if (!$replace_sym) {
                     return [412, "must replace symlink but instructed not to"];
                 }
@@ -222,14 +222,14 @@ sub _setup_file_or_dir {
             }
             last unless $exists;
             if ($is_dir && $which eq 'file') {
-                $log->trace("nok: file expected but is dir");
+                $log->info("nok: file expected but is dir");
                 if (!$replace_dir) {
                     return [412, "must replace dir but instructed not to"];
                 }
                 push @$steps, ["rm_r"], ["create"];
                 last;
             } elsif (!$is_dir && $which eq 'dir') {
-                $log->trace("nok: dir expected but is file");
+                $log->info("nok: dir expected but is file");
                 if (!$replace_file) {
                     return [412, "must replace file but instructed not to"];
                 }
@@ -241,9 +241,9 @@ sub _setup_file_or_dir {
                 $mode = getchmod($mode, $cur_mode)
                     if $mode =~ /[+=-]/; # symbolic mode
                 if ($mode != $cur_mode) {
-                    $log->tracef("nok: $which mode is %04o, ".
-                                     "but it should be %04o",
-                                 $cur_mode, $mode);
+                    $log->infof("nok: $which mode is %04o, ".
+                                    "but it should be %04o",
+                                $cur_mode, $mode);
                     push @$steps, ["chmod", $mode];
                 }
             }
@@ -258,9 +258,9 @@ sub _setup_file_or_dir {
                 }
                 if ($owner != $cur_owner) {
                     my @pwc = getpwuid($cur_owner);
-                    $log->tracef("nok: $which owner is %s but it should be %s",
-                                 @pwc ? $pwc[0] : $cur_owner,
-                                 @pw ? $pw[0] : $owner);
+                    $log->infof("nok: $which owner is %s but it should be %s",
+                                @pwc ? $pwc[0] : $cur_owner,
+                                @pw ? $pw[0] : $owner);
                     push @$steps, ["chown", $owner];
                 }
             }
@@ -275,9 +275,9 @@ sub _setup_file_or_dir {
                 }
                 if ($group != $cur_group) {
                     my @grc = getgrgid($cur_group);
-                    $log->tracef("nok: $which group is %s but it should be %s",
-                                 @grc ? $grc[0] : $cur_group,
-                                 @gr ? $gr[0] : $group);
+                    $log->infof("nok: $which group is %s but it should be %s",
+                                @grc ? $grc[0] : $cur_group,
+                                @gr ? $gr[0] : $group);
                     push @$steps, ["chown", undef, $owner];
                 }
             }
@@ -288,7 +288,7 @@ sub _setup_file_or_dir {
                 my $res = $check_ct ? $check_ct->(\$cur_content) :
                     $cur_content eq $content;
                 unless ($res) {
-                    $log->tracef("nok: file content incorrect");
+                    $log->infof("nok: file content incorrect");
                     push @$steps, ["set_content", \($gen_ct->(\$cur_content))];
                 }
             }
