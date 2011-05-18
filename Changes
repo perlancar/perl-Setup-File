@@ -1,5 +1,13 @@
 Revision history for Setup-File
 
+0.07    2011-05-18
+
+        [ENHANCEMENTS]
+
+        - Add argument to setup_file(): content (a simpler alternative to
+          gen_content_code/check_content_code).
+
+
 0.06    2011-05-17
 
         No functional changes. POD touches/fixes, improve error message.
