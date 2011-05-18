@@ -38,6 +38,30 @@ test_setup_file(
     content    => "foo",
 );
 test_setup_file(
+    name       => "create (arg content)",
+    path       => "/f",
+    other_args => {should_exist=>1, content=>"foo"},
+    status     => 200,
+    is_file    => 1,
+    content    => "foo",
+);
+test_setup_file(
+    name       => "create (arg content + gen_content_code -> conflict)",
+    path       => "/f",
+    other_args => {should_exist=>1, content=>"foo",
+                   gen_content_code=>sub{"foo"}},
+    status     => 400,
+    exists     => 0,
+);
+test_setup_file(
+    name       => "create (arg content + check_content_code -> conflict)",
+    path       => "/f",
+    other_args => {should_exist=>1, content=>"foo",
+                   check_content_code=>sub{$_[0] eq "foo"}},
+    status     => 400,
+    exists     => 0,
+);
+test_setup_file(
     name       => "create (with undo)",
     path       => "/f",
     other_args => {should_exist=>1,
