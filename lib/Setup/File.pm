@@ -562,6 +562,26 @@ point. (If error is encountered during rollback, we die.)
 
 After all steps have been done successfully, we return 200.
 
+=head2 Undo data
+
+Undo data should be a list of steps:
+
+ [undo_step1, undo_step2, ...]
+
+Undo step is usually a command followed by a list of args, examples:
+
+ ["reset"]
+ ["rm", "file1"]
+ ["do", "Setup::File::setup_file", {arg1=>..., arg2=>...}]
+ ["undo", "Setup::File::setup_file", $args, $undo_data]
+
+Because undo data might be needed much later after it is generated (e.g. months
+or even years later when a software is finally uninstalled), please plan a
+stable list of commands and its arguments carefully, so much newer version of
+your setup module can still perform undo using undo data produced by older
+version of your setup module. Existing commands should still be supported as
+long as possible, unless absolutely necessary that it is abandoned. Changes in
+the order of command arguments should also be kept minimal.
 
 =head1 FUNCTIONS
 
