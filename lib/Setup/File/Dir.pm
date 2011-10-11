@@ -28,6 +28,9 @@ If given, -undo_hint should contain {tmp_dir=>...} to specify temporary
 directory to save replaced file/dir. Temporary directory defaults to ~/.setup,
 it will be created if not exists.
 
+Will *not* create intermediate directories like "mkdir -p". Create intermediate
+directories using several setup_dir() invocation.
+
 _
     args     => {
         path => ['str*' => {
