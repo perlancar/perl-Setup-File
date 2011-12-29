@@ -73,7 +73,7 @@ true).
 Note: if you want to setup symlink instead, use Setup::Symlink.
 
 _
-            default => 0,
+            default => 1,
         }],
         replace_symlink => ['bool*' => {
             summary => "Replace existing symlink if it needs to be replaced",
