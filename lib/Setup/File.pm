@@ -1,5 +1,4 @@
 package Setup::File;
-# ABSTRACT: Setup file (existence, mode, permission, content)
 
 use 5.010;
 use strict;
@@ -17,6 +16,8 @@ use UUID::Random;
 require Exporter;
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw(setup_file);
+
+# VERSION
 
 our %SPEC;
 
@@ -497,6 +498,7 @@ sub _setup_file_or_dir {
 }
 
 1;
+# ABSTRACT: Setup file (existence, mode, permission, content)
 __END__
 
 =head1 SYNOPSIS

@@ -1,5 +1,4 @@
 package Setup::File::Dir;
-# ABSTRACT: Setup directory (existence, mode, permission)
 
 use 5.010;
 use strict;
@@ -11,6 +10,8 @@ use Setup::File;
 require Exporter;
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw(setup_dir);
+
+# VERSION
 
 our %SPEC;
 
@@ -96,6 +97,7 @@ sub setup_dir  {
 }
 
 1;
+# ABSTRACT: Setup directory (existence, mode, permission)
 __END__
 
 =head1 SYNOPSIS
