@@ -79,8 +79,10 @@ _
             description => <<'_',
 
 If unset, file will not be checked for its content. If set, code will be called
-whenever file content needs to be checked. Code will be passed the file content
-and should return a boolean value indicating whether content is acceptable.
+whenever file content needs to be checked. Code will be passed the reference to
+file content and should return a boolean value indicating whether content is
+acceptable. If it returns a false value, content is deemed unacceptable and
+needs to be fixed.
 
 Alternatively you can use the simpler 'content' argument.
 
@@ -94,8 +96,8 @@ If set, whenever a new file content is needed (e.g. when file is created or file
 content reset), this code will be called to provide it. If unset, empty string
 will be used instead.
 
-Code will be passed the current content (or undef) and should return the new
-content.
+Code will be passed the reference to the current content (or undef) and should
+return the new content.
 
 Alternatively you can use the simpler 'content' argument.
 
@@ -292,7 +294,9 @@ sub _setup_file_or_dir {
                     $cur_content eq $content;
                 unless ($res) {
                     $log->infof("nok: file $path content incorrect");
-                    push @$steps, ["set_content", \($gen_ct->(\$cur_content))];
+                    my $ref_ct = $gen_ct->(\$cur_content);
+                    $ref_ct = \$ref_ct unless ref($ref_ct);
+                    push @$steps, ["set_content", $ref_ct];
                 }
             }
         }
@@ -417,8 +421,12 @@ sub _setup_file_or_dir {
                         if (defined $step->[1]) {
                             $ct = $step->[1];
                         } else {
-                            $ct = $gen_ct ? $gen_ct->(\$cur_content) :
-                                $content;
+                            if ($gen_ct) {
+                                my $ref_ct = $gen_ct->(\$cur_content);
+                                $ct = ref($ref_ct) ? $$ref_ct : $ref_ct;
+                            } else {
+                                $ct = $content;
+                            }
                             $ct //= "";
                         }
                         my $ct_hash = md5_hex($ct);
@@ -508,7 +516,7 @@ __END__
  # simple usage (doesn't save undo data)
  my $res = setup_file path => '/etc/rc.local',
                       should_exist => 1,
-                      gen_content_code => sub { "#!/bin/sh\n" },
+                      gen_content_code => sub { \("#!/bin/sh\n") },
                       owner => 'root', group => 0,
                       mode => '+x';
  die unless $res->[0] == 200 || $res->[0] == 304;
