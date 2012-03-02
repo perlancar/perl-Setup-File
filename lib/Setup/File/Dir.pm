@@ -131,7 +131,7 @@ This module is part of the Setup modules family.
 
 This module uses L<Log::Any> logging framework.
 
-This module's functions have L<Sub::Spec> specs.
+This module's functions have L<Rinci> metadata.
 
 
 =head1 THE SETUP MODULES FAMILY

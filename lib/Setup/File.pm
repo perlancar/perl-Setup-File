@@ -539,7 +539,7 @@ This module is part of the Setup modules family.
 
 This module uses L<Log::Any> logging framework.
 
-This module's functions have L<Sub::Spec> specs.
+This module's functions have L<Rinci> metadata.
 
 
 =head1 THE SETUP MODULES FAMILY
@@ -560,18 +560,17 @@ status). Another example is L<Setup::Unix::User>, which will setup a Unix user
 A simulation (dry run) mode also exists: if you pass L<-dry_run> => 1 argument
 to the function, it will check states and report inconsistencies, but will
 modify nothing and return 200 status (or 304) immediately instead. See the
-"dry_run" feature in L<Sub::Spec::Clause::features> for more details on dry
-running.
+"dry_run" feature in L<Rinci::function> for more details on dry running.
 
 After the setup, the function returns undo data, which can be used to perform
 undo ("unsetup", "uninstallation") later. The undo data is serializable and thus
 can be stored in persistent storage. When doing undo, the undo data is fed into
 the C<-undo_data> argument, along with other same arguments specified during the
-previous "do" phase. See the "undo" feature in L<Sub::Spec::Clause::features>
-for more details on the undo protocol. Undo will reverse all actions done by the
-function in the "do" phase; for example, if a file was created by the function
-it will be deleted (if it hasn't changed since the creation), if an existing
-file's mode/ownership was changed, it will be restored, and so on.
+previous "do" phase. See the "undo" feature in L<Rinci::function> for more
+details on the undo protocol. Undo will reverse all actions done by the function
+in the "do" phase; for example, if a file was created by the function it will be
+deleted (if it hasn't changed since the creation), if an existing file's
+mode/ownership was changed, it will be restored, and so on.
 
 There could be various state changes between the time of do and undo; a file can
 be deleted or modified by other processes. The undo must be flexible enough so
