@@ -563,10 +563,12 @@ To "setup" something means to set something into a desired state. For example,
 L<Setup::File> sets up a file with a specified permission mode, ownership, and
 content. If the file doesn't exist it will be created; if a directory exists
 instead, it will be removed and replaced with the file; if the file already
-exists but with incorrect permission/owner/content, it will be corrected. If
-everything is already correct, nothing is done (the function returns 304
-status). Another example is L<Setup::Unix::User>, which will setup a Unix user
-(with the correct specified group membership).
+exists but with incorrect permission/owner/content, it will be corrected.
+Another example is L<Setup::Unix::User>, which will setup a Unix user (with the
+correct specified group membership). If everything is already correct, nothing
+is done (the function returns 304 status). In other words, setup function should
+be idempotent. One should be able to run it multiple times safely to reach the
+desired state.
 
 A simulation (dry run) mode also exists: if you pass L<-dry_run> => 1 argument
 to the function, it will check states and report inconsistencies, but will
