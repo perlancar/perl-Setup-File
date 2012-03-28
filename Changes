@@ -1,5 +1,19 @@
 Revision history for Setup-File
 
+0.13    2012-03-28
+
+        - Refactor: create Test::Setup to reduce repetition when testing setup
+          functions (testing dry-run, do, undo, redo, ...). Convert all test
+          files to use this.
+
+        - Robustness: step create: don't bail if file with the same content
+          already exists.
+
+        - Fix a couple of other bugs caught by Test::Setup.
+
+        - build: Replace PodWeaver SubSpec plugin with Perinci.
+
+
 0.12    2012-03-02
 
         No functional changes. Change references to Sub::Spec now to Rinci.

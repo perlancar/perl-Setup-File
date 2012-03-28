@@ -141,11 +141,6 @@ for more details on the goals, characteristics, and implementation of Setup
 modules family.
 
 
-=head1 FUNCTIONS
-
-None are exported by default, but they are exportable.
-
-
 =head1 SEE ALSO
 
 L<Setup::File>.

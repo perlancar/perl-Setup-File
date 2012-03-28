@@ -636,10 +636,6 @@ version of your setup module. Existing commands should still be supported as
 long as possible, unless absolutely necessary that it is abandoned. Changes in
 the order of command arguments should also be kept minimal.
 
-=head1 FUNCTIONS
-
-None are exported by default, but they are exportable.
-
 
 =head1 SEE ALSO
 
