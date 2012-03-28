@@ -513,7 +513,7 @@ sub _setup_file_or_dir {
     $meta->{undo_data} = $undo_steps if $save_undo;
     $log->tracef("meta: %s", $meta);
     my $is_noop = !@$steps || $save_undo && !@$undo_steps;
-    return [$is_noop ? 304:200, $is_noop ? "Nothing done":"OK", undef, $meta];
+    return [@$steps ? 200 : 304, @$steps ? "OK" : "Nothing done", undef, $meta];
 }
 
 1;
