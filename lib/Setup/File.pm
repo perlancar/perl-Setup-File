@@ -419,7 +419,7 @@ sub _setup_file_or_dir {
                     } else {
                         my $ct;
                         if (defined $step->[1]) {
-                            $ct = $step->[1];
+                            $ct = ${$step->[1]};
                         } else {
                             if ($gen_ct) {
                                 my $ref_ct = $gen_ct->(\$cur_content);
