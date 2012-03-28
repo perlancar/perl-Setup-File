@@ -16,340 +16,135 @@ use vars qw($tmp_dir $undo_data);
 setup();
 
 test_setup_file(
-    name       => "create (dry run)",
-    path       => "/f",
-    other_args => {should_exist=>1, -dry_run=>1},
-    status     => 200,
-    exists     => 0,
+    name          => "create",
+    path          => "/f",
+    other_args    => {should_exist=>1},
+    check_unsetup => {exists=>0},
+    check_setup   => {exists=>1, is_file=>1},
+    cleanup       => sub { unlink "f" },
 );
 test_setup_file(
-    name       => "create",
-    path       => "/f",
-    other_args => {should_exist=>1},
-    status     => 200,
-    is_file    => 1,
+    name          => "create with arg gen_content_sub",
+    path          => "/f",
+    other_args    => {should_exist=>1, gen_content_code=>sub {\"foo"}},
+    check_unsetup => {exists=>0},
+    check_setup   => {exists=>1, is_file=>1, content=>"foo"},
+    cleanup       => sub { unlink "f" },
 );
 test_setup_file(
-    name       => "create (arg gen_content_sub)",
-    path       => "/f-20120126a",
-    other_args => {should_exist=>1, gen_content_code=>sub {\"foo"}},
-    status     => 200,
-    is_file    => 1,
-    content    => "foo",
+    name          => "create w/ arg gen_content_sub #2 (scalar also accepted)",
+    path          => "/f",
+    other_args    => {should_exist=>1, gen_content_code=>sub {"foo"}},
+    check_unsetup => {exists=>0},
+    check_setup   => {exists=>1, is_file=>1, content=>"foo"},
+    cleanup       => sub { unlink "f" },
 );
 test_setup_file(
-    name       => "create (arg gen_content_sub #2, scalar also accepted)",
-    path       => "/f-20120126b",
-    other_args => {should_exist=>1, gen_content_code=>sub {"foo"}},
-    status     => 200,
-    is_file    => 1,
-    content    => "foo",
+    name          => "create with arg content",
+    path          => "/f",
+    other_args    => {should_exist=>1, content=>"foo"},
+    check_unsetup => {exists=>0},
+    check_setup   => {exists=>1, is_file=>1, content=>"foo"},
+    cleanup       => sub { unlink "f" },
 );
 test_setup_file(
-    name       => "create (arg content)",
-    path       => "/f",
-    other_args => {should_exist=>1, content=>"foo"},
-    status     => 200,
-    is_file    => 1,
-    content    => "foo",
+    name          => "create (arg content + gen_content_code -> conflict)",
+    path          => "/f",
+    other_args    => {should_exist=>1, content=>"foo",
+                      gen_content_code=>sub{\"foo"}},
+    arg_error     => 1,
+    check_unsetup => {exists=>0},
 );
 test_setup_file(
-    name       => "create (arg content + gen_content_code -> conflict)",
-    path       => "/f",
-    other_args => {should_exist=>1, content=>"foo",
-                   gen_content_code=>sub{\"foo"}},
-    status     => 400,
-    exists     => 0,
+    name          => "create (arg content + check_content_code -> conflict)",
+    path          => "/f",
+    other_args    => {should_exist=>1, content=>"foo",
+                      check_content_code=>sub{ ${$_[0]} eq "foo" }},
+    arg_error     => 1,
+    check_unsetup => {exists=>0},
 );
 test_setup_file(
-    name       => "create (arg content + check_content_code -> conflict)",
-    path       => "/f",
-    other_args => {should_exist=>1, content=>"foo",
-                   check_content_code=>sub{ ${$_[0]} eq "foo" }},
-    status     => 400,
-    exists     => 0,
+    name          => "create (state changed before undo)",
+    path          => "/f",
+    other_args    => {should_exist=>1, gen_content_code=>sub{\"old"}},
+    check_unsetup => {exists=>0},
+    check_setup   => {exists=>1, is_file=>1, content=>"old"},
+    set_state1    => sub { write_file "f", "new" },
+    check_state1  => {exists=>1, is_file=>1, content=>"new"},
+    cleanup       => sub { unlink "f" },
 );
 test_setup_file(
-    name       => "create (with undo)",
-    path       => "/f",
-    other_args => {should_exist=>1,
-                   -undo_action=>"do", -undo_hint=>{tmp_dir=>$tmp_dir}},
-    status     => 200,
-    is_file    => 1,
-    posttest   => sub {
-        my $res = shift;
-        $undo_data = $res->[3]{undo_data};
-        ok($undo_data, "there is undo data");
-    },
-    cleanup    => 0,
+    name          => "create (state changed before redo)",
+    path          => "/f",
+    other_args    => {should_exist=>1, gen_content_code=>sub{\"old"}},
+    check_unsetup => {exists=>0},
+    check_setup   => {exists=>1, is_file=>1, content=>"old"},
+    set_state2    => sub { write_file "f", "new" },
+    check_state2  => {exists=>1, is_file=>1, content=>"new"},
+    cleanup       => sub { unlink "f" },
 );
 test_setup_file(
-    name       => "create (undo, dry_run)",
-    path       => "/f",
-    other_args => {should_exist=>1, -dry_run=>1,
-                   -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 200,
-    is_file    => 1,
-    cleanup    => 0,
+    name          => "replace symlink",
+    prepare       => sub { symlink "x", "f" },
+    path          => "/f",
+    other_args    => {should_exist=>1, allow_symlink=>0},
+    check_unsetup => {exists=>1, is_symlink=>1, },
+    check_setup   => {exists=>1, is_file=>1, is_symlink=>0},
+    cleanup       => sub { unlink "f" },
 );
 test_setup_file(
-    name       => "create (undo)",
-    path       => "/f",
-    other_args => {should_exist=>1,
-                   -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 200,
-    exists     => 0,
-    cleanup    => 0,
+    name          => "allow_symlink=1, but target doesn't exist",
+    prepare       => sub { symlink "x", "f" },
+    path          => "/f",
+    other_args    => {should_exist=>1, allow_symlink=>1},
+    check_unsetup => {exists=>1, is_symlink=>1, },
+    check_setup   => {exists=>1, is_file=>1, is_symlink=>0},
+    cleanup       => sub { unlink "f" },
 );
 test_setup_file(
-    name       => "create (reapply undo, still ok)",
-    path       => "/f",
-    other_args => {should_exist=>1,
-                   -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 200,
-    exists     => 0,
-    cleanup    => 0,
+    name          => "allow_symlink=1",
+    prepare       => sub { symlink "$Bin/$FindBin::Script", "f" },
+    path          => "/f",
+    other_args    => {should_exist=>1, allow_symlink=>1},
+    check_unsetup => {exists=>1, is_symlink=>1, },
+    check_setup   => {exists=>1, is_symlink=>1, },
+    cleanup       => sub { unlink "f" },
+);
+test_setup_file(
+    name          => "replace file content (mode not preserved)",
+    prepare       => sub { write_file "f", "old"; chmod 0646, "f" },
+    path          => "/f",
+    other_args    => {should_exist=>1,
+                      check_content_code=>sub { ${$_[0]} eq 'new' },
+                      gen_content_code => sub { \'new' } },
+    check_unsetup => {exists=>1, content=>'old'},
+    check_setup   => {exists=>1, content=>'new'},
+    cleanup       => sub { unlink "f" },
+);
+test_setup_file(
+    name          => "replace file (arg mode)",
+    prepare       => sub { write_file "f", "old"; chmod 0646, "f" },
+    path          => "/f",
+    other_args    => {should_exist=>1, mode=>0664,
+                      check_content_code=>sub { ${$_[0]} eq 'new' },
+                      gen_content_code => sub { \'new' } },
+    check_unsetup => {exists=>1, mode=>0646, content=>'old'},
+    check_setup   => {exists=>1, mode=>0664, content=>'new'},
+    cleanup       => sub { unlink "f" },
+);
+test_setup_file(
+    name          => "replace dir",
+    prepare       => sub { mkdir "f"; chmod 0715, "f" },
+    path          => "/f",
+    other_args    => {should_exist=>1, mode=>0664,
+                      check_content_code=>sub { ${$_[0]} eq 'new' },
+                      gen_content_code => sub { \'new' } },
+    check_unsetup => {exists=>1, is_dir=>1},
+    check_setup   => {exists=>1, is_file=>1, mode=>0664, content=>'new'},
+    cleanup       => sub { rmdir "f" },
 );
 
-test_setup_file(
-    name       => "create 2 (with undo, testing changed state between do-undo)",
-    path       => "/f",
-    other_args => {should_exist=>1,
-                   gen_content=>sub{\"old"},
-                   -undo_action=>"do", -undo_hint=>{tmp_dir=>$tmp_dir}},
-    status     => 200,
-    is_file    => 1,
-    posttest   => sub {
-        my $res = shift;
-        $undo_data = $res->[3]{undo_data};
-    },
-    cleanup    => 0,
-);
-test_setup_file(
-    name       => "create 2 (undo, won't delete cause content changed)",
-    presetup   => sub { write_file "f", "new" },
-    path       => "/f",
-    other_args => {should_exist=>1,
-                   -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 200,
-    is_file    => 1,
-    posttest   => sub {
-        my $res = shift;
-        is(read_file("f"), "new", "content not modified");
-    },
-);
-
-test_setup_file(
-    name       => "replace symlink (dry_run)",
-    presetup   => sub { symlink "x", "f" },
-    path       => "/f",
-    other_args => {-dry_run=>1, should_exist=>1, allow_symlink=>0},
-    status     => 200,
-    is_symlink => 1,
-);
-test_setup_file(
-    name       => "allow_symlink = 1 (target doesn't exist)",
-    presetup   => sub { symlink "x", "f" },
-    path       => "/f",
-    other_args => {should_exist=>1, allow_symlink=>1,
-                   -undo_action=>"do", -undo_hint=>{tmp_dir=>$tmp_dir}},
-    status     => 200,
-    posttest   => sub {
-        my ($res, $path) = @_;
-        ok((-f $path) && !(-l $path), "symlink replaced with file");
-        $undo_data = $res->[3]{undo_data};
-    },
-    cleanup    => 0,
-);
-test_setup_file(
-    name       => "allow_symlink = 1 (target doesn't exist, undo)",
-    path       => "/f",
-    other_args => {should_exist=>1, allow_symlink=>1,
-                   -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 200,
-    posttest   => sub {
-        my ($res, $path) = @_;
-        ok((-l $path) && !(-e $path), "symlink restored");
-    },
-);
-test_setup_file(
-    name       => "allow_symlink = 1",
-    presetup   => sub { symlink "$Bin/$FindBin::Script", "f" },
-    path       => "/f",
-    other_args => {should_exist=>1, allow_symlink=>1},
-    status     => 304,
-    is_symlink => 1,
-    is_file    => 1,
-);
-test_setup_file(
-    name       => "replace symlink",
-    presetup   => sub { symlink "x", "f" },
-    path       => "/f",
-    other_args => {should_exist=>1, allow_symlink=>0},
-    status     => 200,
-    is_symlink => 0,
-    is_file    => 1,
-);
-test_setup_file(
-    name       => "replace symlink (with undo)",
-    presetup   => sub { symlink "x", "f" },
-    path       => "/f",
-    other_args => {should_exist=>1, allow_symlink=>0,
-                   -undo_action=>"do", -undo_hint=>{tmp_dir=>$tmp_dir}},
-    status     => 200,
-    is_symlink => 0,
-    is_file    => 1,
-    posttest   => sub {
-        my $res = shift;
-        $undo_data = $res->[3]{undo_data};
-        ok($undo_data, "there is undo data");
-        my $step = $undo_data->[0];
-    },
-    cleanup    => 0,
-);
-test_setup_file(
-    name       => "replace symlink (undo, dry_run)",
-    path       => "/f",
-    other_args => {should_exist=>1, allow_symlink=>0, -dry_run=>1,
-                   -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 200,
-    is_symlink => 0,
-    is_file    => 1,
-    cleanup    => 0,
-);
-test_setup_file(
-    name       => "replace symlink (undo)",
-    path       => "/f",
-    other_args => {should_exist=>1, allow_symlink=>0,
-                   -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 200,
-    is_symlink => 1,
-    posttest   => sub {
-        my ($res, $path) = @_;
-        my $step = $undo_data->[0];
-        ok(!(-l $step->[1]), "undo_data: step[0]: temp file moved");
-        is(readlink($path), "x",
-           "undo_data: step[0]: original symlink restored");
-    },
-);
-
-test_setup_file(
-    name       => "replace file (dry_run)",
-    presetup   => sub { write_file "f", "old"; chmod 0646, "f" },
-    path       => "/f",
-    other_args => {-dry_run=>1, should_exist=>1, mode => 0664,
-                   check_content_code=>sub { ${$_[0]} eq 'new' },
-                   gen_content_code=>sub {\'new'}, },
-    status     => 200,
-    is_symlink => 0, is_file => 1, content => 'old', mode => 0646,
-    cleanup    => 0,
-);
-test_setup_file(
-    name       => "replace file (arg mode)",
-    path       => "/f",
-    other_args => {should_exist=>1, mode => 0664,
-                   check_content_code=>sub { ${$_[0]} eq 'new' },
-                   gen_content_code=>sub {\'new'}, },
-    status     => 200,
-    is_symlink => 0, is_file => 1, content => 'new', mode => 0664,
-);
-test_setup_file(
-    name       => "replace file (with undo)",
-    presetup   => sub { write_file "f", "old"; chmod 0646, "f" },
-    path       => "/f",
-    other_args => {should_exist=>1, mode => 0664,
-                   check_content_code=>sub { ${$_[0]} eq 'new' },
-                   gen_content_code=>sub {\'new'},
-                   -undo_action=>"do", -undo_hint=>{tmp_dir=>$tmp_dir}},
-    status     => 200,
-    is_symlink => 0, is_file => 1, content => 'new', mode => 0664,
-    posttest   => sub {
-        my $res = shift;
-        $undo_data = $res->[3]{undo_data};
-        ok($undo_data, "there is undo data");
-    },
-    cleanup    => 0,
-);
-test_setup_file(
-    name       => "replace file (undo, dry_run)",
-    path       => "/f",
-    other_args => {-dry_run=>1, should_exist=>1, mode => 0664,
-                   check_content_code=>sub { ${$_[0]} eq 'new' },
-                   gen_content_code=>sub {\'new'},
-                   -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 200,
-    is_symlink => 0, is_file => 1, content => 'new', mode => 0664,
-    cleanup    => 0,
-);
-test_setup_file(
-    name       => "replace file (undo)",
-    path       => "/f",
-    other_args => {should_exist=>1, mode => 0664,
-                   check_content_code=>sub { ${$_[0]} eq 'new' },
-                   gen_content_code=>sub {\'new'},
-                   -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 200,
-    is_symlink => 0, is_file => 1, content => 'old', mode => 0646,
-);
-
-test_setup_file(
-    name       => "replace dir (dry_run)",
-    presetup   => sub { mkdir "f"; chmod 0715, "f" },
-    path       => "/f",
-    other_args => {-dry_run=>1, should_exist=>1, mode => 0664,
-                   check_content_code=>sub { ${$_[0]} eq 'new' },
-                   gen_content_code=>sub { \'new' }, },
-    status     => 200,
-    is_symlink => 0, is_dir => 1, mode => 0715,
-    cleanup    => 0,
-);
-test_setup_file(
-    name       => "replace dir",
-    path       => "/f",
-    other_args => {should_exist=>1, mode => 0664,
-                   check_content_code=>sub { ${$_[0]} eq 'new' },
-                   gen_content_code=>sub { \'new' }, },
-    status     => 200,
-    is_symlink => 0, is_file => 1, content => 'new', mode => 0664,
-);
-test_setup_file(
-    name       => "replace dir (with undo)",
-    presetup   => sub { mkdir "f"; chmod 0715, "f" },
-    path       => "/f",
-    other_args => {should_exist=>1, mode => 0664,
-                   check_content_code=>sub { ${$_[0]} eq 'new' },
-                   gen_content_code=>sub { \'new' },
-                   -undo_action=>"do", -undo_hint=>{tmp_dir=>$tmp_dir}},
-    status     => 200,
-    is_symlink => 0, is_file => 1, content => 'new', mode => 0664,
-    posttest   => sub {
-        my $res = shift;
-        $undo_data = $res->[3]{undo_data};
-        ok($undo_data, "there is undo data");
-    },
-    cleanup    => 0,
-);
-test_setup_file(
-    name       => "replace dir (undo, dry_run)",
-    path       => "/f",
-    other_args => {-dry_run=>1, should_exist=>1, mode => 0664,
-                   check_content_code=>sub { ${$_[0]} eq 'new' },
-                   gen_content_code=>sub { \'new' },
-                   -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 200,
-    is_symlink => 0, is_file => 1, content => 'new', mode => 0664,
-    cleanup    => 0,
-);
-test_setup_file(
-    name       => "replace dir (undo)",
-    path       => "/f",
-    other_args => {should_exist=>1, mode => 0664,
-                   check_content_code=>sub { ${$_[0]} eq 'new' },
-                   gen_content_code=>sub { \'new' },
-                   -undo_action=>"undo", -undo_data=>$undo_data},
-    status     => 200,
-    is_symlink => 0, is_dir => 1, mode => 0715,
-);
+goto DONE_TESTING;
 
 # XXX: test symbolic mode
 # XXX: test should_exist = undef

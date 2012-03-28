@@ -10,6 +10,7 @@ use File::Temp qw(tempdir);
 use Setup::File::Dir qw(setup_dir);
 use Setup::File qw(setup_file);
 use Test::More 0.96;
+use Test::Setup qw(test_setup);
 
 sub setup {
     plan skip_all => "Not Unix-y enough (absolute path doesn't start with /)"
@@ -42,41 +43,23 @@ sub test_setup_dir {
 }
 
 sub _test_setup_file_or_dir {
-    my ($which, %args) = @_;
-    subtest "$args{name}" => sub {
+    my ($which, %tsfargs) = @_;
 
-        if ($args{presetup}) {
-            $args{presetup}->();
-        }
+    my %tsargs;
 
-        my $path = $::root_dir . $args{path};
-        my %setup_args = (path => $path);
-        if ($args{other_args}) {
-            while (my ($k, $v) = each %{$args{other_args}}) {
-                $setup_args{$k} = $v;
-            }
-        }
-        my $res;
-        eval {
-            if ($which eq 'file') {
-                $res = setup_file(%setup_args);
-            } else {
-                $res = setup_dir(%setup_args);
-            }
-        };
-        my $eval_err = $@;
+    for (qw/name arg_error set_state1 set_state2 prepare cleanup/) {
+        $tsargs{$_} = $tsfargs{$_};
+    }
+    $tsargs{function}    = $which eq 'file' ? \&setup_file : \&setup_dir;
 
-        if ($args{dies}) {
-            ok($eval_err, "dies");
-        } else {
-            ok(!$eval_err, "doesn't die") or diag $eval_err;
-        }
+    my $path = $::root_dir . $tsfargs{path};
+    my %fargs = (path => $path,
+                 -undo_hint=>{tmp_dir=>$::tmp_dir},
+                 %{$tsfargs{other_args} // {}});
+    $tsargs{args} = \%fargs;
 
-        #diag explain $res;
-        if ($args{status}) {
-            is($res->[0], $args{status}, "status $args{status}")
-                or diag explain($res);
-        }
+    my $check = sub {
+        my %cargs = @_;
 
         my $is_symlink = (-l $path);
         my $exists     = (-e _);
@@ -84,41 +67,41 @@ sub _test_setup_file_or_dir {
         my $is_file    = (-f _);
         my $is_dir     = (-d _);
 
-        if ($args{exists} // 1) {
+        if ($cargs{exists} // 1) {
             ok($exists, "exists") or return;
 
-            if (defined $args{is_symlink}) {
-                if ($args{is_symlink}) {
+            if (defined $cargs{is_symlink}) {
+                if ($cargs{is_symlink}) {
                     ok($is_symlink, "is symlink");
                 } else {
                     ok(!$is_symlink, "not symlink");
                 }
             }
 
-            if (defined $args{is_file}) {
-                if ($args{is_file}) {
+            if (defined $cargs{is_file}) {
+                if ($cargs{is_file}) {
                     ok($is_file, "is file");
                 } else {
                     ok(!$is_file, "not file");
                 }
             }
 
-            if (defined $args{is_dir}) {
-                if ($args{is_dir}) {
+            if (defined $cargs{is_dir}) {
+                if ($cargs{is_dir}) {
                     ok($is_dir, "is dir");
                 } else {
                     ok(!$is_dir, "not dir");
                 }
             }
 
-            if (defined $args{mode}) {
+            if (defined $cargs{mode}) {
                 my $mode = $st[2] & 07777;
-                is($mode, $args{mode}, sprintf("mode is %04o", $args{mode}));
+                is($mode, $cargs{mode}, sprintf("mode is %04o", $cargs{mode}));
             }
 
-            if (defined $args{owner}) {
+            if (defined $cargs{owner}) {
                 my $owner = $st[4];
-                my $wanted = $args{owner};
+                my $wanted = $cargs{owner};
                 if ($wanted !~ /^\d+$/) {
                     my @gr = getpwnam($wanted)
                         or die "Can't getpwnam($wanted): $!";
@@ -127,9 +110,9 @@ sub _test_setup_file_or_dir {
                 is($owner, $wanted, "owner");
             }
 
-            if (defined $args{group}) {
+            if (defined $cargs{group}) {
                 my $group = $st[5];
-                my $wanted = $args{group};
+                my $wanted = $cargs{group};
                 if ($wanted !~ /^\d+$/) {
                     my @gr = getgrnam($wanted)
                         or die "Can't getgrnam($wanted): $!";
@@ -138,21 +121,25 @@ sub _test_setup_file_or_dir {
                 is($group, $wanted, "group");
             }
 
-            if (defined $args{content}) {
+            if (defined $cargs{content}) {
                 my $content = read_file($path);
-                is($content, $args{content}, "content");
+                is($content, $cargs{content}, "content");
             }
-
         } else {
             ok(!$exists, "does not exist");
         }
-
-        if ($args{posttest}) {
-            $args{posttest}->($res, $path);
-        }
-
-        remove_tree($path) if $args{cleanup} // 1;
     };
+
+    $tsargs{check_setup}   = sub { $check->(%{$tsfargs{check_setup}}) };
+    $tsargs{check_unsetup} = sub { $check->(%{$tsfargs{check_unsetup}}) };
+    if ($tsfargs{check_state1}) {
+        $tsargs{check_state1} = sub { $check->(%{$tsfargs{check_state1}}) };
+    }
+    if ($tsfargs{check_state2}) {
+        $tsargs{check_state2} = sub { $check->(%{$tsfargs{check_state2}}) };
+    }
+
+    test_setup(%tsargs);
 }
 
 1;
