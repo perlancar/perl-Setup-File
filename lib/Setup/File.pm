@@ -405,7 +405,17 @@ sub _setup_file_or_dir {
         } elsif ($step->[0] eq 'create') {
             $log->info("Creating $path ...");
             if ((-l $path) || (-e _)) {
-                $err = "Can't create $path: already exists";
+                if ((-f _)) {
+                    my $cur_content = read_file($path, err_mode=>'quiet');
+                    return [500, "Can't read file content: $!"]
+                        unless defined($cur_content);
+                    if ($cur_content ne ${$step->[1]}) {
+                        $err = "Can't create $path: file already exists but ".
+                            "with different content";
+                    }
+                } else {
+                    $err = "Can't create $path: already exists but not a file";
+                }
             } else {
                 {
                     if ($which eq 'dir') {
@@ -502,7 +512,8 @@ sub _setup_file_or_dir {
     my $meta = {};
     $meta->{undo_data} = $undo_steps if $save_undo;
     $log->tracef("meta: %s", $meta);
-    return [@$steps ? 200 : 304, @$steps ? "OK" : "Nothing done", undef, $meta];
+    my $is_noop = !@$steps || $save_undo && !@$undo_steps;
+    return [$is_noop ? 304:200, $is_noop ? "Nothing done":"OK", undef, $meta];
 }
 
 1;
