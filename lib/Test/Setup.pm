@@ -6,6 +6,8 @@ use warnings;
 
 use Test::More 0.96;
 
+# VERSION
+
 require Exporter;
 our @ISA = qw(Exporter);
 our @EXPORT_OK = qw(test_setup);
