@@ -1,5 +1,11 @@
 Revision history for Setup-File
 
+0.14    2012-03-28
+
+        No functional changes. Split specification to Setup dist. Split
+        Test::Setup to its own dist.
+
+
 0.13    2012-03-28
 
         - Refactor: create Test::Setup to reduce repetition when testing setup
