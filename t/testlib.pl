@@ -47,7 +47,7 @@ sub _test_setup_file_or_dir {
 
     my %tsargs;
 
-    for (qw/name arg_error set_state1 set_state2 prepare cleanup/) {
+    for (qw/name dry_do_error do_error set_state1 set_state2 prepare cleanup/) {
         $tsargs{$_} = $tsfargs{$_};
     }
     $tsargs{function}    = $which eq 'file' ? \&setup_file : \&setup_dir;

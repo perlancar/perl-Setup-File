@@ -52,7 +52,7 @@ test_setup_file(
     path          => "/f",
     other_args    => {should_exist=>1, content=>"foo",
                       gen_content_code=>sub{\"foo"}},
-    arg_error     => 1,
+    dry_do_error  => 400,
     check_unsetup => {exists=>0},
 );
 test_setup_file(
@@ -60,7 +60,7 @@ test_setup_file(
     path          => "/f",
     other_args    => {should_exist=>1, content=>"foo",
                       check_content_code=>sub{ ${$_[0]} eq "foo" }},
-    arg_error     => 1,
+    dry_do_error  => 400,
     check_unsetup => {exists=>0},
 );
 test_setup_file(
