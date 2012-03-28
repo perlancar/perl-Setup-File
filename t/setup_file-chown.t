@@ -18,14 +18,12 @@ plan skip_all => "must run as root to test changing ownership/group" if $>;
 setup();
 
 test_setup_file(
-    name       => "create (with undo)",
-    path       => "/f",
-    other_args => {should_exist=>1,
-                   owner=>2, group=>3,
-                   -undo_action=>"do", -undo_hint=>{tmp_dir=>$tmp_dir}},
-    status     => 200,
-    is_symlink => 0, is_file => 1, owner => 2, group => 3,
-    cleanup    => 0,
+    name          => "create",
+    path          => "/f",
+    other_args    => {should_exist=>1, owner=>2, group=>3},
+    check_unsetup => {exists=>0},
+    check_setup   => {exists=>1, is_file=>1, owner=>2, group=>3},
+    cleanup       => sub { unlink "f" },
 );
 
 # XXX: test using group name (instead of gid)
