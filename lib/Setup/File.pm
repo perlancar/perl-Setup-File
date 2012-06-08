@@ -345,7 +345,7 @@ sub _setup_file_or_dir {
                 } else {
                     $err = "Can't symlink $path -> $t: $!";
                 }
-            }
+             }
         } elsif ($step->[0] eq 'rm_r') {
             $log->info("Removing file/dir $path ...");
             if ((-l $path) || (-e _)) {
