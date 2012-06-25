@@ -11,6 +11,7 @@ use File::Copy::Recursive qw(rmove);
 use File::Path qw(remove_tree);
 use File::Slurp;
 use File::Temp qw(tempfile tempdir);
+use Perinci::Sub::Gen::Undoable 0.08 qw(gen_undoable_func);
 use UUID::Random;
 
 require Exporter;
@@ -21,7 +22,19 @@ our @EXPORT_OK = qw(setup_file);
 
 our %SPEC;
 
-$SPEC{setup_file} = {
+# return 1 if dir exists and empty
+sub _dir_is_empty {
+    my ($dir) = @_;
+    return unless (-d $dir);
+    return unless opendir my($dh), $dir;
+    my @d = grep {$_ ne '.' && $_ ne '..'} readdir($dh);
+    my $res = !@d;
+    #$log->tracef("dir_is_empty(%s)? %d", $dir, $res);
+    $res;
+}
+
+my $res = gen_undoable_func(
+    name     => __PACKAGE__ . '::setup_file',
     summary  => "Setup file (existence, mode, permission, content)",
     description => <<'_',
 
@@ -37,17 +50,19 @@ it will be created if not exists.
 
 _
     args     => {
-        path => ['str*' => {
+        path => {
+            schema  => ['str*' => { match => qr!^/! }],
             summary => 'Path to file',
             description => <<'_',
 
 File path needs to be absolute so it's normalized.
 
 _
-            arg_pos => 1,
-            match   => qr!^/!,
-        }],
-        should_exist => ['bool' => {
+            req => 1,
+            pos => 0,
+        },
+        should_exist => {
+            schema  => 'bool',
             summary => 'Whether file should exist',
             description => <<'_',
 
@@ -56,25 +71,36 @@ deleted if it does. If set to 1, file must exist and will be created if it
 doesn't.
 
 _
-        }],
-        mode => ['str' => {
+        },
+        mode => {
+            schema => 'str',
             summary => 'Expected permission mode',
-        }],
-        owner => ['str' => {
+            description => <<'_',
+
+Mode is as supported by File::chmod. Either an octal string (e.g. '0755') or a
+symbolic mode (e.g. 'u+rw').
+
+_
+        },
+        owner => {
+            schema  => 'str',
             summary => 'Expected owner',
-        }],
-        group => ['str' => {
+        },
+        group => {
+            schema  => 'str',
             summary => 'Expected group',
-        }],
-        content => ['str' => {
+        },
+        content => {
+            schema  => 'str',
             summary => 'Desired file content',
             description => <<'_',
 
 Alternatively you can also use check_content_code & gen_content_code.
 
 _
-        }],
-        check_content_code => ['code' => {
+        },
+        check_content_code => {
+            schema  => 'code',
             summary => 'Code to check content',
             description => <<'_',
 
@@ -87,8 +113,9 @@ needs to be fixed.
 Alternatively you can use the simpler 'content' argument.
 
 _
-        }],
-        gen_content_code => ['code' => {
+        },
+        gen_content_code => {
+            schema  => 'code',
             summary => 'Code to generate content',
             description => <<'_',
 
@@ -102,8 +129,9 @@ return the new content.
 Alternatively you can use the simpler 'content' argument.
 
 _
-        }],
-        allow_symlink => ['bool*' => {
+        },
+        allow_symlink => {
+            schema  => [bool => {default=>1}],
             summary => 'Whether symlink is allowed',
             description => <<'_',
 
@@ -114,73 +142,53 @@ true).
 Note: if you want to setup symlink instead, use Setup::Symlink.
 
 _
-            default => 1,
-        }],
-        replace_symlink => ['bool*' => {
+        },
+        replace_symlink => {
+            schema  => [bool => {default=>1}],
             summary => "Replace existing symlink if it needs to be replaced",
-            default => 1,
-        }],
-        replace_file => ['bool*' => {
+        },
+        replace_file => {
+            schema  => [bool => {default=>1}],
             summary => "Replace existing file if it needs to be replaced",
-            default => 1,
-        }],
-        replace_dir => ['bool*' => {
+        },
+        replace_dir => {
+            schema  => [bool => {default=>1}],
             summary => "Replace existing dir if it needs to be replaced",
-            default => 1,
-        }],
+        },
     },
-    features => {undo=>1, dry_run=>1},
-};
-sub setup_file {
-    my %args = @_;
-    _setup_file_or_dir('file', %args);
+
+    check_args => $check_arg,
+
 }
 
-# return 1 if dir exists and empty
-sub _dir_is_empty {
-    my ($dir) = @_;
-    return unless (-d $dir);
-    return unless opendir my($dh), $dir;
-    my @d = grep {$_ ne '.' && $_ ne '..'} readdir($dh);
-    my $res = !@d;
-    #$log->tracef("dir_is_empty(%s)? %d", $dir, $res);
-    $res;
-}
-
-sub _setup_file_or_dir {
-    my ($which, %args) = @_;
-    die "BUG: which should be file/dir"
-        unless $which eq 'file' || $which eq 'dir';
-
-    my $dry_run        = $args{-dry_run};
-    my $undo_action    = $args{-undo_action} // "";
-
-    # check args
-    my $path           = $args{path};
-    $path or return [400, "Please specify path"];
-    $path              =~ m!^/!
+my $check_args = sub {
+    my $args = shift;
+    $args->{path} or return [400, "Please specify path"];
+    $args->{path} =~ m!^/!
         or return [400, "Please specify an absolute path"];
-    my $should_exist   = $args{should_exist};
-    my $allow_symlink  = $args{allow_symlink} // 1;
-    my $replace_file   = $args{replace_file} // 1;
-    my $replace_dir    = $args{replace_dir} // 1;
-    my $replace_sym    = $args{replace_symlink} // 1;
-    my $owner          = $args{owner};
-    my $group          = $args{group};
-    my $mode           = $args{mode};
-    my $content        = $args{content};
-    my $check_ct       = $args{check_content_code};
-    my $gen_ct         = $args{gen_content_code};
+    $args->{allow_symlink}   //= 1;
+    $args->{replace_file}    //= 1;
+    $args->{replace_dir}     //= 1;
+    $args->{replace_symlink} //= 1;
+
+    my $ct       = $args->{content};
+    my $check_ct = $args->{check_content_code};
+    my $gen_ct   = $args->{gen_content_code};
     return [400, "If check_content_code is specified, ".
                 "gen_content_code must also be specified"]
         if defined($check_ct) && !defined($gen_ct);
     return [400, "If content is specified, then check_content_code/".
                 "gen_content_code must not be specified (and vice versa)"]
-        if defined($content) && (defined($check_ct) || defined($gen_ct));
+        if defined($ct) && (defined($check_ct) || defined($gen_ct));
+    [200, "OK"];
+};
+
+# OLD
 
     my $cur_content;
 
-    # check current state and collect steps
+my $build_steps => sub {
+
     my $is_symlink     = (-l $path);
     my $exists         = (-e _);
     # -l does lstat, we need stat
