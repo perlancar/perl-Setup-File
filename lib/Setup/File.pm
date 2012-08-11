@@ -11,7 +11,7 @@ use File::Copy::Recursive qw(rmove);
 use File::Path qw(remove_tree);
 use File::Slurp;
 use File::Temp qw(tempfile tempdir);
-use Perinci::Sub::Gen::Undoable 0.08 qw(gen_undoable_func);
+use Perinci::Sub::Gen::Undoable 0.18 qw(gen_undoable_func);
 use UUID::Random;
 
 require Exporter;
@@ -33,161 +33,11 @@ sub _dir_is_empty {
     $res;
 }
 
-my $res = gen_undoable_func(
-    name     => __PACKAGE__ . '::setup_file',
-    summary  => "Setup file (existence, mode, permission, content)",
-    description => <<'_',
-
-On do, will create file (if it doesn't already exist) and correct
-mode/permission as well as content.
-
-On undo, will restore old mode/permission/content, or delete the file again if
-it was created by this function *and* its content hasn't changed since.
-
-If given, -undo_hint should contain {tmp_dir=>...} to specify temporary
-directory to save replaced file/dir. Temporary directory defaults to ~/.setup,
-it will be created if not exists.
-
-_
-    args     => {
-        path => {
-            schema  => ['str*' => { match => qr!^/! }],
-            summary => 'Path to file',
-            description => <<'_',
-
-File path needs to be absolute so it's normalized.
-
-_
-            req => 1,
-            pos => 0,
-        },
-        should_exist => {
-            schema  => 'bool',
-            summary => 'Whether file should exist',
-            description => <<'_',
-
-If undef, file need not exist. If set to 0, file must not exist and will be
-deleted if it does. If set to 1, file must exist and will be created if it
-doesn't.
-
-_
-        },
-        mode => {
-            schema => 'str',
-            summary => 'Expected permission mode',
-            description => <<'_',
-
-Mode is as supported by File::chmod. Either an octal string (e.g. '0755') or a
-symbolic mode (e.g. 'u+rw').
-
-_
-        },
-        owner => {
-            schema  => 'str',
-            summary => 'Expected owner',
-        },
-        group => {
-            schema  => 'str',
-            summary => 'Expected group',
-        },
-        content => {
-            schema  => 'str',
-            summary => 'Desired file content',
-            description => <<'_',
-
-Alternatively you can also use check_content_code & gen_content_code.
-
-_
-        },
-        check_content_code => {
-            schema  => 'code',
-            summary => 'Code to check content',
-            description => <<'_',
-
-If unset, file will not be checked for its content. If set, code will be called
-whenever file content needs to be checked. Code will be passed the reference to
-file content and should return a boolean value indicating whether content is
-acceptable. If it returns a false value, content is deemed unacceptable and
-needs to be fixed.
-
-Alternatively you can use the simpler 'content' argument.
-
-_
-        },
-        gen_content_code => {
-            schema  => 'code',
-            summary => 'Code to generate content',
-            description => <<'_',
-
-If set, whenever a new file content is needed (e.g. when file is created or file
-content reset), this code will be called to provide it. If unset, empty string
-will be used instead.
-
-Code will be passed the reference to the current content (or undef) and should
-return the new content.
-
-Alternatively you can use the simpler 'content' argument.
-
-_
-        },
-        allow_symlink => {
-            schema  => [bool => {default=>1}],
-            summary => 'Whether symlink is allowed',
-            description => <<'_',
-
-If existing file is a symlink then if allow_symlink is false then it is an
-unacceptable condition (the symlink will be replaced if replace_symlink is
-true).
-
-Note: if you want to setup symlink instead, use Setup::Symlink.
-
-_
-        },
-        replace_symlink => {
-            schema  => [bool => {default=>1}],
-            summary => "Replace existing symlink if it needs to be replaced",
-        },
-        replace_file => {
-            schema  => [bool => {default=>1}],
-            summary => "Replace existing file if it needs to be replaced",
-        },
-        replace_dir => {
-            schema  => [bool => {default=>1}],
-            summary => "Replace existing dir if it needs to be replaced",
-        },
-    },
-
-    check_args => $check_arg,
-
-}
-
-my $check_args = sub {
+sub __build_steps {
+    my $which = shift; # file for Setup::File, or dir for Setup::File::Dir
     my $args = shift;
-    $args->{path} or return [400, "Please specify path"];
-    $args->{path} =~ m!^/!
-        or return [400, "Please specify an absolute path"];
-    $args->{allow_symlink}   //= 1;
-    $args->{replace_file}    //= 1;
-    $args->{replace_dir}     //= 1;
-    $args->{replace_symlink} //= 1;
 
-    my $ct       = $args->{content};
-    my $check_ct = $args->{check_content_code};
-    my $gen_ct   = $args->{gen_content_code};
-    return [400, "If check_content_code is specified, ".
-                "gen_content_code must also be specified"]
-        if defined($check_ct) && !defined($gen_ct);
-    return [400, "If content is specified, then check_content_code/".
-                "gen_content_code must not be specified (and vice versa)"]
-        if defined($ct) && (defined($check_ct) || defined($gen_ct));
-    [200, "OK"];
-};
-
-# OLD
-
-    my $cur_content;
-
-my $build_steps => sub {
+    my $path = $args->{path};
 
     my $is_symlink     = (-l $path);
     my $exists         = (-e _);
@@ -206,145 +56,178 @@ my $build_steps => sub {
         $exists = (-e _) if $symlink_exists;
     }
 
-    my $steps;
-    if ($undo_action eq 'undo') {
-        $steps = $args{-undo_data} or return [400, "Please supply -undo_data"];
-    } else {
-        $steps = [];
-        {
-            if (defined($should_exist) && !$should_exist && $exists) {
-                $log->info("nok: $which $path should not exist but does");
-                push @$steps, [$is_dir ? "rm_r" : "rmfile"];
-                last;
+    my @steps;
+    {
+        if (defined($args->{should_exist}) && !$args->{should_exist}
+                && $exists) {
+            $log->info("nok: $which $path should not exist but does");
+            push @steps, [$is_dir ? "rm_r" : "rmfile"];
+            last;
+        }
+        if ($args->{should_exist} && !$exists) {
+            $log->info("nok: $which $path should exist but doesn't");
+            push @steps, ["rmsym"] if $symlink_exists;
+            push @steps, ["create"];
+            last;
+        }
+        if (!$args->{allow_symlink} && $is_symlink) {
+            $log->info("nok: $which $path should not be symlink but is");
+            if (!$args->{replace_symlink}) {
+                return [412, "must replace symlink but instructed not to"];
             }
-            if ($should_exist && !$exists) {
-                $log->info("nok: $which $path should exist but doesn't");
-                push @$steps, ["rmsym"] if $symlink_exists;
-                push @$steps, ["create"];
-                last;
+            push @steps, ["rmsym"], ["create"];
+            last;
+        }
+        last unless $exists;
+        if ($is_dir && $which eq 'file') {
+            $log->info("nok: $path is expected to be file but is dir");
+            if (!$args->{replace_dir}) {
+                return [412, "must replace dir but instructed not to"];
             }
-            if (!$allow_symlink && $is_symlink) {
-                $log->info("nok: $which $path should not be symlink but is");
-                if (!$replace_sym) {
-                    return [412, "must replace symlink but instructed not to"];
-                }
-                push @$steps, ["rmsym"], ["create"];
-                last;
+            push @steps, ["rm_r"], ["create"];
+            last;
+        } elsif (!$is_dir && $which eq 'dir') {
+            $log->info("nok: $path is expected to be dir but is file");
+            if (!$args->{replace_file}) {
+                return [412, "must replace file but instructed not to"];
             }
-            last unless $exists;
-            if ($is_dir && $which eq 'file') {
-                $log->info("nok: $path is expected to be file but is dir");
-                if (!$replace_dir) {
-                    return [412, "must replace dir but instructed not to"];
-                }
-                push @$steps, ["rm_r"], ["create"];
-                last;
-            } elsif (!$is_dir && $which eq 'dir') {
-                $log->info("nok: $path is expected to be dir but is file");
-                if (!$replace_file) {
-                    return [412, "must replace file but instructed not to"];
-                }
-                push @$steps, ["rm_r"], ["create"];
-                last;
-            }
-            if (defined $mode) {
-                my $cur_mode = $st[2] & 07777;
-                $mode = getchmod($mode, $cur_mode)
-                    if $mode =~ /[+=-]/; # symbolic mode
-                if ($mode != $cur_mode) {
-                    $log->infof("nok: $which $path mode is %04o, ".
-                                    "but it should be %04o",
-                                $cur_mode, $mode);
-                    push @$steps, ["chmod", $mode];
-                }
-            }
-            if (defined $owner) {
-                my $cur_owner = $st[4];
-                my @pw;
-                if ($owner !~ /^\d+$/) {
-                    @pw = getpwnam($owner);
-                    $owner = $pw[2];
-                } else {
-                    @pw = getpwuid($owner);
-                }
-                if ($owner != $cur_owner) {
-                    my @pwc = getpwuid($cur_owner);
-                    $log->infof("nok: $which $path owner is %s ".
-                                    "but it should be %s",
-                                @pwc ? $pwc[0] : $cur_owner,
-                                @pw ? $pw[0] : $owner);
-                    push @$steps, ["chown", $owner];
-                }
-            }
-            if (defined $group) {
-                my $cur_group = $st[5];
-                my @gr;
-                if ($group !~ /^\d+$/) {
-                    @gr = getgrnam($group);
-                    $group = $gr[2];
-                } else {
-                    @gr = getgrgid($group);
-                }
-                if ($group != $cur_group) {
-                    my @grc = getgrgid($cur_group);
-                    $log->infof("nok: $which $path group is %s ".
-                                    "but it should be %s",
-                                @grc ? $grc[0] : $cur_group,
-                                @gr ? $gr[0] : $group);
-                    push @$steps, ["chown", undef, $owner];
-                }
-            }
-            if ($check_ct || defined($content)) {
-                $cur_content = read_file($path, err_mode=>'quiet');
-                return [500, "Can't read file content: $!"]
-                    unless defined($cur_content);
-                my $res = $check_ct ? $check_ct->(\$cur_content) :
-                    $cur_content eq $content;
-                unless ($res) {
-                    $log->infof("nok: file $path content incorrect");
-                    my $ref_ct = $gen_ct->(\$cur_content);
-                    $ref_ct = \$ref_ct unless ref($ref_ct);
-                    push @$steps, ["set_content", $ref_ct];
-                }
+            push @steps, ["rm_r"], ["create"];
+            last;
+        }
+        if (defined $args->{mode}) {
+            my $cur_mode = $st[2] & 07777;
+            my $mode = $args->{mode} =~ /[+=-]/ ? # resolve symbolic mode
+                getchmod($args->{mode}, $cur_mode) : $args->{mode};
+            if ($mode != $cur_mode) {
+                $log->infof("nok: $which $path mode is %04o, ".
+                                "but it should be %04o",
+                            $cur_mode, $mode);
+                push @steps, ["chmod", $mode];
             }
         }
-    }
-
-    return [400, "Invalid steps, must be an array"]
-        unless $steps && ref($steps) eq 'ARRAY';
-    return [200, "Dry run"] if $dry_run && @$steps;
-
-    # create tmp dir for undo
-    my $save_undo    = $undo_action ? 1:0;
-    my $undo_hint = $args{-undo_hint} // {};
-    return [400, "Invalid -undo_hint, please supply a hashref"]
-        unless ref($undo_hint) eq 'HASH';
-    my $tmp_dir = $undo_hint->{tmp_dir} // "$ENV{HOME}/.setup";
-    if ($save_undo && !(-d $tmp_dir) && !$dry_run) {
-        mkdir $tmp_dir or return [500, "Can't make temp dir `$tmp_dir`: $!"];
-    }
-    my $save_path = "$tmp_dir/".UUID::Random::generate;
-
-    # perform the steps
-    my $rollback;
-    my $undo_steps = [];
-  STEP:
-    for my $i (0..@$steps-1) {
-        my $step = $steps->[$i];
-        $log->tracef("step %d of 0..%d: %s", $i, @$steps-1, $step);
-        my $err;
-        return [400, "Invalid step (not array)"] unless ref($step) eq 'ARRAY';
-        if ($step->[0] eq 'rmsym') {
-            $log->info("Removing symlink $path ...");
-            if ((-l $path) || (-e _)) {
-                my $t = readlink($path) // "";
-                if (unlink $path) {
-                    unshift @$undo_steps, ["ln", $t];
-                } else {
-                    $err = "Can't remove $path: $!";
-                }
+        if (defined $args->{owner}) {
+            my $cur_uid = $st[4];
+            my $uid;
+            my @pw;
+            if ($args->{owner} !~ /\A\d+\z/) { # resolve username -> uid
+                @pw = getpwnam($args->{owner});
+                return [412, "Can't find user with name $args->{owner}"]
+                    unless @pw;
+                $uid = $pw[2];
+            } else {
+                $uid = $args->{owner};
             }
-        } elsif ($step->[0] eq 'ln') {
+            if ($uid != $cur_uid) {
+                my @pwc = getpwuid($cur_uid);
+                $log->infof("nok: $which $path owner is %s ".
+                                "but it should be %s",
+                            @pwc ? $pwc[0] : $cur_uid,
+                            @pw  ? $pw[0]  : $uid);
+                push @steps, ["chown", $uid];
+            }
+        }
+        if (defined $args->{group}) {
+            my $cur_gid = $st[5];
+            my $gid;
+            my @gr;
+            if ($args->{group} !~ /^\d+$/) {
+                my @gr = getgrnam($args->{group});
+                return [412, "Can't find group with name $args->{group}"]
+                    unless @gr;
+                $gid = $gr[2];
+            } else {
+                $gid = $args->{group};
+            }
+            if ($gid != $cur_gid) {
+                my @grc = getgrgid($cur_gid);
+                $log->infof("nok: $which $path group is %s ".
+                                "but it should be %s",
+                            @grc ? $grc[0] : $cur_gid,
+                            @gr  ? $gr[0]  : $gid);
+                push @steps, ["chown", undef, $gid];
+            }
+        }
+        if ($args->{check_content_code} || defined($args->{content})) {
+            my $cur_content = read_file($path, err_mode=>'quiet');
+            return [500, "Can't read file content: $!"]
+                unless defined($cur_content);
+            my $res = $args->{check_content_code} ?
+                $args->{check_content_code}->(\$cur_content) :
+                    $cur_content eq $args->{content};
+            unless ($res) {
+                $log->infof("nok: file $path content incorrect");
+                my $ref_ct = $args->{gen_content_code}->(\$cur_content);
+                $ref_ct = \$ref_ct unless ref($ref_ct);
+                push @steps, ["set_content", $$ref_ct]; # JSON doesnt do \scalar
+            }
+        }
+    } # block
+}
+
+our $steps = {
+    rmsym => {
+        summary => "Delete symlink at 'path'",
+        description => <<'_',
+
+Syntax: `["rmsym"]`
+
+Will fail if 'path' argument is not a symlink.
+
+The original symlink target is saved as undo data.
+
+See also: ln.
+
+_
+        check => sub {
+            my ($args, $step) = @_;
+            my $path = $args->{path};
+            if (-l $path) {
+                my $t = readlink($path) // "";
+                return [200, "OK", ["ln", $t]];
+            } elsif (-e _) {
+                return [412, "Can't rmsym $path: not a symlink"];
+            }
+            return [200, "OK"];
+        },
+        fix => sub {
+            my ($args, $step) = @_;
+            my $path = $args->{path};
+            if (unlink $s) {
+                return [200, "OK"];
+            }
+            return [500, "Can't unlink $path: $!"];
+        },
+    },
+
+    ln => {
+        summary => 'Create symlink',
+        description => <<'_',
+
+Syntax: `["ln", $t]`.
+
+Create symlink which points to $t.
+
+See also: rmsym.
+
+_
+        check => sub {
+            my ($args, $step) = @_;
+            my $path = $args->{path};
+            my $t = $step->[1];
+            if (-l $path) {
+                if (readlink($path) eq $t) {
+                    return [200, "OK"];
+                } else {
+                    return [200, "OK", ["ln"]];
+                }
+            } elsif (-e _) {
+                return [412, "Can't ln: already exists"];
+            }
+                return [200, "OK", ["rmsym"]];
+            }
+            return [200, "OK"];
+
+        elsif ($step->[0] eq 'ln') {
             my $t = $step->[1];
             $log->info("Creating symlink $path -> $t ...");
             unless ((-l $path) && readlink($path) eq $t) {
@@ -515,17 +398,163 @@ my $build_steps => sub {
             }
         }
     }
-    return [500, "Error (rollbacked): $rollback"] if $rollback;
+    };
 
-    my $meta = {};
-    $meta->{undo_data} = $undo_steps if $save_undo;
-    $log->tracef("meta: %s", $meta);
-    return [@$steps ? 200 : 304, @$steps ? "OK" : "Nothing done", undef, $meta];
-}
+my $res = gen_undoable_func(
+    name     => 'setup_file',
+    summary  => "Setup file (existence, mode, permission, content)",
+    description => <<'_',
+
+On do, will create file (if it doesn't already exist) and correct
+mode/permission as well as content.
+
+On undo, will restore old mode/permission/content, or delete the file again if
+it was created by this function *and* its content hasn't changed since.
+
+If given, -undo_hint should contain {tmp_dir=>...} to specify temporary
+directory to save replaced file/dir. Temporary directory defaults to ~/.setup,
+it will be created if not exists.
+
+_
+    args     => {
+        path => {
+            schema  => ['str*' => { match => qr!^/! }],
+            summary => 'Path to file',
+            description => <<'_',
+
+File path needs to be absolute so it's normalized.
+
+_
+            req => 1,
+            pos => 0,
+        },
+        should_exist => {
+            schema  => 'bool',
+            summary => 'Whether file should exist',
+            description => <<'_',
+
+If undef, file need not exist. If set to 0, file must not exist and will be
+deleted if it does. If set to 1, file must exist and will be created if it
+doesn't.
+
+_
+        },
+        mode => {
+            schema => 'str',
+            summary => 'Expected permission mode',
+            description => <<'_',
+
+Mode is as supported by File::chmod. Either an octal string (e.g. '0755') or a
+symbolic mode (e.g. 'u+rw').
+
+_
+        },
+        owner => {
+            schema  => 'str',
+            summary => 'Expected owner',
+        },
+        group => {
+            schema  => 'str',
+            summary => 'Expected group',
+        },
+        content => {
+            schema  => 'str',
+            summary => 'Desired file content',
+            description => <<'_',
+
+Alternatively you can also use check_content_code & gen_content_code.
+
+_
+        },
+        check_content_code => {
+            schema  => 'code',
+            summary => 'Code to check content',
+            description => <<'_',
+
+If unset, file will not be checked for its content. If set, code will be called
+whenever file content needs to be checked. Code will be passed the reference to
+file content and should return a boolean value indicating whether content is
+acceptable. If it returns a false value, content is deemed unacceptable and
+needs to be fixed.
+
+Alternatively you can use the simpler 'content' argument.
+
+_
+        },
+        gen_content_code => {
+            schema  => 'code',
+            summary => 'Code to generate content',
+            description => <<'_',
+
+If set, whenever a new file content is needed (e.g. when file is created or file
+content reset), this code will be called to provide it. If unset, empty string
+will be used instead.
+
+Code will be passed the reference to the current content (or undef) and should
+return the new content.
+
+Alternatively you can use the simpler 'content' argument.
+
+_
+        },
+        allow_symlink => {
+            schema  => [bool => {default=>1}],
+            summary => 'Whether symlink is allowed',
+            description => <<'_',
+
+If existing file is a symlink then if allow_symlink is false then it is an
+unacceptable condition (the symlink will be replaced if replace_symlink is
+true).
+
+Note: if you want to setup symlink instead, use Setup::Symlink.
+
+_
+        },
+        replace_symlink => {
+            schema  => [bool => {default=>1}],
+            summary => "Replace existing symlink if it needs to be replaced",
+        },
+        replace_file => {
+            schema  => [bool => {default=>1}],
+            summary => "Replace existing file if it needs to be replaced",
+        },
+        replace_dir => {
+            schema  => [bool => {default=>1}],
+            summary => "Replace existing dir if it needs to be replaced",
+        },
+    },
+
+    check_args => sub {
+        my $args = shift;
+        $args->{path} or return [400, "Please specify path"];
+        $args->{path} =~ m!^/!
+            or return [400, "Please specify an absolute path"];
+        $args->{allow_symlink}   //= 1;
+        $args->{replace_file}    //= 1;
+        $args->{replace_dir}     //= 1;
+        $args->{replace_symlink} //= 1;
+
+        my $ct       = $args->{content};
+        my $check_ct = $args->{check_content_code};
+        my $gen_ct   = $args->{gen_content_code};
+        return [400, "If check_content_code is specified, ".
+                    "gen_content_code must also be specified"]
+            if defined($check_ct) && !defined($gen_ct);
+        return [400, "If content is specified, then check_content_code/".
+                    "gen_content_code must not be specified (and vice versa)"]
+            if defined($ct) && (defined($check_ct) || defined($gen_ct));
+        [200, "OK"];
+    },
+
+    build_steps => sub {
+        __build_steps('file', @_);
+    },
+
+    steps => $steps,
+);
 
 1;
 # ABSTRACT: Setup file (existence, mode, permission, content)
-__END__
 
 =head1 SYNOPSIS
 
@@ -547,13 +576,6 @@ __END__
  # perform undo
  $res = setup_file ..., -undo_action => "undo", -undo_data=>$undo_data;
  die unless $res->[0] == 200 || $res->[0] == 304;
-
-
-=head1 DESCRIPTION
-
-This module uses L<Log::Any> logging framework.
-
-This module has L<Rinci> metadata.
 
 
 =head1 SEE ALSO
