@@ -18,13 +18,32 @@ my $rootdir = tempdir(CLEANUP=>1);
 $CWD = $rootdir;
 
 write_file "$rootdir/from", "content";
-
 test_mv(
     name          => "move",
     from          => "/from",
     to            => "/to",
     check_unsetup => {exists=>[qw/from/], not_exists=>[qw/to/]},
     check_setup   => {exists=>[qw/to/]  , not_exists=>[qw/from/]},
+);
+
+write_file "$rootdir/from", "content";
+write_file "$rootdir/to"  , "content";
+test_mv(
+    name          => "can't move: target exists",
+    from          => "/from",
+    to            => "/to",
+    check_unsetup => {exists=>[qw/from to/]},
+    dry_do_error  => 412,
+);
+
+unlink "$rootdir/from";
+unlink "$rootdir/to";
+test_mv(
+    name          => "can't move: source not exists",
+    from          => "/from",
+    to            => "/to",
+    check_unsetup => {exists=>[qw//], not_exists=>[qw/to from/]},
+    dry_do_error  => 412,
 );
 
 DONE_TESTING:
