@@ -29,7 +29,7 @@ test_mv(
 write_file "$rootdir/from", "content";
 write_file "$rootdir/to"  , "content";
 test_mv(
-    name          => "can't move: target exists",
+    name          => "unfixable: target exists",
     from          => "/from",
     to            => "/to",
     check_unsetup => {exists=>[qw/from to/]},
@@ -39,7 +39,7 @@ test_mv(
 unlink "$rootdir/from";
 unlink "$rootdir/to";
 test_mv(
-    name          => "can't move: source not exists",
+    name          => "unfixable: source not exists",
     from          => "/from",
     to            => "/to",
     check_unsetup => {exists=>[qw//], not_exists=>[qw/to from/]},

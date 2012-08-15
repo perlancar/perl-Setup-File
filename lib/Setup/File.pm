@@ -78,9 +78,9 @@ $res = gen_undoable_func(
     summary     => 'Move file/dir',
     description => <<'_',
 
-Fixed state: none. But to be idempotent, function will save a flag file if it
-already moves the file, so if the flag file still exists, function will assume
-state is fixed. During undo, flag file will be removed.
+Fixed state: flag file exists. To be idempotent, function will save a flag file
+if it already moves the file, so if the flag file still exists, function will
+assume state is fixed. During undo, flag file will be removed.
 
 Fixable state: `from` exists and `to` doesn't exist.
 

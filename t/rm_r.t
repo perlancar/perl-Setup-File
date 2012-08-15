@@ -25,7 +25,7 @@ test_rm_r(
     check_setup   => {exists=>0},
 );
 test_rm_r(
-    name          => "already removed",
+    name          => "fixed: already removed",
     path          => "/p",
     check_unsetup => {exists=>0},
     dry_do_error  => 304,
