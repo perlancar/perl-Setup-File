@@ -11,7 +11,7 @@ use File::Copy::Recursive qw(rmove);
 use File::Path qw(remove_tree);
 use File::Slurp;
 use File::Temp qw(tempfile tempdir);
-use Perinci::Sub::Gen::Undoable 0.18 qw(gen_undoable_func);
+use Perinci::Sub::Gen::Undoable 0.22 qw(gen_undoable_func);
 use UUID::Random;
 
 require Exporter;
@@ -21,6 +21,112 @@ our @EXPORT_OK = qw(setup_file);
 # VERSION
 
 our %SPEC;
+
+my $res;
+
+$res = gen_undoable_func(
+    v           => 2,
+    name        => 'rm_r',
+    summary     => 'Delete file/dir',
+    trash_dir   => 1,
+    description => <<'_',
+
+It actually moves the file/dir to a unique name in trash and save the unique
+name as undo data.
+
+Fixed state: path does not exist.
+
+Fixable state: path exists.
+
+_
+    args        => {
+        path => {
+            schema => 'str*',
+        },
+    },
+    check_args => sub {
+        # TMP, schema
+        my $args = shift;
+        defined($args->{path}) or return [400, "Please specify path"];
+        [200, "OK"];
+    },
+    check_or_fix_state => sub {
+        my ($which, $args, $undo) = @_;
+
+        my $path = $args->{path};
+        my $exists = (-l $path) || (-e _);
+        my $save = "$args->{-undo_trash_dir}/". UUID::Random::generate;
+        my @u;
+        if ($which eq 'check') {
+            push @u, ['Setup::File::mv', {from => $save, to => $path}]
+                if $exists;
+            return @u ? [200,"OK",undef,{undo_data=>\@u}]:[304,"Nothing to do"];
+        }
+        $save = $undo->[0][1]{from};
+        if (rmove $path, $save) {
+            return [200, "OK"];
+        } else {
+            return [500, "Can't move $path -> $save: $!"];
+        }
+    },
+);
+die "Can't generate rm_r: $res->[0] - $res->[1]" unless $res->[0] == 200;
+
+$res = gen_undoable_func(
+    v           => 2,
+    name        => 'mv',
+    summary     => 'Move file/dir',
+    description => <<'_',
+
+Fixed state: none.
+
+Fixable state: `from` exists and `to` doesn't exist.
+
+_
+    args        => {
+        from => {
+            schema => 'str*',
+        },
+        to => {
+            schema => 'str*',
+        },
+    },
+    check_args => sub {
+        # TMP, schema
+        my $args = shift;
+        defined($args->{from}) or return [400, "Please specify from"];
+        defined($args->{to})   or return [400, "Please specify to"];
+        [200, "OK"];
+    },
+    check_or_fix_state => sub {
+        my ($which, $args, $undo) = @_;
+
+        my $from = $args->{from};
+        my $to   = $args->{to};
+        my $from_exists = (-l $from) || (-e _);
+        my $to_exists   = (-l $to)   || (-e _);
+        my @u;
+        if ($which eq 'check') {
+            return [412, "Source ($from) does not exist"] unless $from_exists;
+            return [412, "Target ($to) exists"] if $to_exists;
+            push @u, ['Setup::File::mv', {
+                from => $to,
+                to   => $from,
+            }];
+            return @u ? [200,"OK",undef,{undo_data=>\@u}]:[304,"Nothing to do"];
+        }
+        if (rmove $from, $to) {
+            return [200, "OK"];
+        } else {
+            return [500, "Can't move $from -> $to: $!"];
+        }
+    },
+);
+die "Can't generate mv: $res->[0] - $res->[1]" unless $res->[0] == 200;
+
+1;
+
+__END__
 
 # return 1 if dir exists and empty
 sub _dir_is_empty {
