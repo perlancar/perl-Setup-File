@@ -17,18 +17,14 @@ use Test::Setup qw(test_setup);
 my $rootdir = tempdir(CLEANUP=>1);
 $CWD = $rootdir;
 
-write_file "$rootdir/p", "";
-test_rm_r(
-    name          => "remove",
-    path          => "/p",
-    check_unsetup => {exists=>1},
-    check_setup   => {exists=>0},
-);
-test_rm_r(
-    name          => "already removed",
-    path          => "/p",
-    check_unsetup => {exists=>0},
-    dry_do_error  => 304,
+write_file "$rootdir/from", "content";
+
+test_mv(
+    name          => "move",
+    from          => "/from",
+    to            => "/to",
+    check_unsetup => {exists=>[qw/from/], not_exists=>[qw/to/]},
+    check_setup   => {exists=>[qw/to/]  , not_exists=>[qw/from/]},
 );
 
 DONE_TESTING:
@@ -40,7 +36,7 @@ if (Test::More->builder->is_passing) {
     diag "there are failing tests, not deleting test data dir $rootdir";
 }
 
-sub test_rm_r {
+sub test_mv {
     my (%targs) = @_;
 
     my %tsargs;
@@ -48,24 +44,21 @@ sub test_rm_r {
     for (qw/name dry_do_error do_error set_state1 set_state2 prepare cleanup/) {
         $tsargs{$_} = $targs{$_};
     }
-    $tsargs{function} = \&Setup::File::rm_r;
+    $tsargs{function} = \&Setup::File::mv;
 
-    my $path = $rootdir . $targs{path};
-    my %fargs = (path => $path,
-                 -undo_trash_dir=>$rootdir, %{$targs{other_args} // {}},
-             );
+    my $from = $rootdir . $targs{from};
+    my $to   = $rootdir . $targs{to};
+    my %fargs = (from => $from, to => $to, %{$targs{other_args} // {}});
     $tsargs{args} = \%fargs;
 
     my $check = sub {
         my %cargs = @_;
 
-        my $exists     = (-l $path) || (-e _);
-
-        my $te = $cargs{exists} // 1;
-        if ($te) {
-            ok($exists, "exists");
-        } else {
-            ok(!$exists, "does not exist");
+        for (@{ $cargs{exists} // [] }) {
+            ok((-l $_) || (-e _), "$_ exists");
+        }
+        for (@{ $cargs{not_exists} // [] }) {
+            ok(!((-l $_) || (-e _)), "$_ not exists");
         }
         if ($cargs{extra}) {
             $cargs{extra}->();

@@ -58,7 +58,7 @@ _
         my $save = "$args->{-undo_trash_dir}/". UUID::Random::generate;
         my @u;
         if ($which eq 'check') {
-            push @u, ['Setup::File::mv', {from => $save, to => $path}]
+            push @u, [__PACKAGE__.'::mv', {from => $save, to => $path}]
                 if $exists;
             return @u ? [200,"OK",undef,{undo_data=>\@u}]:[304,"Nothing to do"];
         }
@@ -78,7 +78,9 @@ $res = gen_undoable_func(
     summary     => 'Move file/dir',
     description => <<'_',
 
-Fixed state: none.
+Fixed state: none. But to be idempotent, function will save a flag file if it
+already moves the file, so if the flag file still exists, function will assume
+state is fixed. During undo, flag file will be removed.
 
 Fixable state: `from` exists and `to` doesn't exist.
 
@@ -91,6 +93,7 @@ _
             schema => 'str*',
         },
     },
+    trash_dir => 1,
     check_args => sub {
         # TMP, schema
         my $args = shift;
@@ -106,16 +109,21 @@ _
         my $from_exists = (-l $from) || (-e _);
         my $to_exists   = (-l $to)   || (-e _);
         my @u;
+        my $flag    = "$args->{-undo_trash_dir}/mv-flag-". md5_hex($from, $to);
+        my $revflag = "$args->{-undo_trash_dir}/mv-flag-". md5_hex($to, $from);
+        $log->tracef("Flag file to mark move from->to: %s, to->from: %s",
+                     $flag, $revflag);
         if ($which eq 'check') {
+            return [304, "Already moved"] if (-f $flag) &&
+                !$from_exists && $to_exists;
             return [412, "Source ($from) does not exist"] unless $from_exists;
             return [412, "Target ($to) exists"] if $to_exists;
-            push @u, ['Setup::File::mv', {
-                from => $to,
-                to   => $from,
-            }];
+            push @u, [__PACKAGE__.'::mv', {from => $to, to => $from}];
             return @u ? [200,"OK",undef,{undo_data=>\@u}]:[304,"Nothing to do"];
         }
         if (rmove $from, $to) {
+            write_file($flag, "");
+            unlink $revflag;
             return [200, "OK"];
         } else {
             return [500, "Can't move $from -> $to: $!"];
