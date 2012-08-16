@@ -19,7 +19,7 @@ $CWD = $rootdir;
 
 write_file "$rootdir/p", "";
 test_rm_r(
-    name          => "remove",
+    name          => "fixable",
     path          => "/p",
     check_unsetup => {exists=>1},
     check_setup   => {exists=>0},

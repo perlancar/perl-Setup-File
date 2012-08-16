@@ -19,7 +19,7 @@ $CWD = $rootdir;
 
 write_file "$rootdir/from", "content";
 test_mv(
-    name          => "move",
+    name          => "fixable",
     from          => "/from",
     to            => "/to",
     check_unsetup => {exists=>[qw/from/], not_exists=>[qw/to/]},
