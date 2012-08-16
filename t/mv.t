@@ -59,6 +59,7 @@ sub test_mv {
     my (%targs) = @_;
 
     my %tsargs;
+    $tsargs{tmpdir} = $rootdir;
 
     for (qw/name dry_do_error do_error set_state1 set_state2 prepare cleanup/) {
         $tsargs{$_} = $targs{$_};
