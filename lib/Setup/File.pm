@@ -31,8 +31,7 @@ $res = gen_undoable_func(
     trash_dir   => 1,
     description => <<'_',
 
-It actually moves the file/dir to a unique name in trash and save the unique
-name as undo data.
+It actually moves the file/dir to save path (a unique name in trash).
 
 Fixed state: path does not exist.
 
@@ -42,6 +41,10 @@ _
     args        => {
         path => {
             schema => 'str*',
+        },
+        save_path => {
+            summary => 'Supply save path (instead of generating a random one)',
+            schema  => 'str*',
         },
     },
     check_args => sub {
@@ -53,13 +56,17 @@ _
     check_or_fix_state => sub {
         my ($which, $args, $undo) = @_;
 
-        my $path = $args->{path};
+        my $do_log = !$args->{-check_state};
+        my $path   = $args->{path};
         my $exists = (-l $path) || (-e _);
-        my $save = "$args->{-undo_trash_dir}/". UUID::Random::generate;
+        my $save = $args->{save_path} //
+            "$args->{-undo_trash_dir}/". UUID::Random::generate;
         my @u;
         if ($which eq 'check') {
-            push @u, [__PACKAGE__.'::mv', {from => $save, to => $path}]
-                if $exists;
+            if ($exists) {
+                $log->info("nok: $path should be removed") if $do_log;
+                push @u, [__PACKAGE__.'::mv', {from => $save, to => $path}];
+            }
             return @u ? [200,"OK",undef,{undo_data=>\@u}]:[304,"Nothing to do"];
         }
         $save = $undo->[0][1]{from};
@@ -104,8 +111,9 @@ _
     check_or_fix_state => sub {
         my ($which, $args, $undo) = @_;
 
-        my $from = $args->{from};
-        my $to   = $args->{to};
+        my $do_log = !$args->{-check_state};
+        my $from   = $args->{from};
+        my $to     = $args->{to};
         my $from_exists = (-l $from) || (-e _);
         my $to_exists   = (-l $to)   || (-e _);
         my @u;
@@ -118,6 +126,7 @@ _
                 !$from_exists && $to_exists;
             return [412, "Source ($from) does not exist"] unless $from_exists;
             return [412, "Target ($to) exists"] if $to_exists;
+            $log->info("nok: $from should be moved to $to") if $do_log;
             push @u, [__PACKAGE__.'::mv', {from => $to, to => $from}];
             return @u ? [200,"OK",undef,{undo_data=>\@u}]:[304,"Nothing to do"];
         }
@@ -174,7 +183,7 @@ sub __build_steps {
     {
         if (defined($args->{should_exist}) && !$args->{should_exist}
                 && $exists) {
-            $log->info("nok: $which $path should not exist but does");
+            $log->info("nok: $which $path should not exist but does") if $do_log;
             push @steps, [$is_dir ? "rm_r" : "rmfile"];
             last;
         }
@@ -278,96 +287,9 @@ sub __build_steps {
     } # block
 }
 
+# OLD
+
 our $steps = {
-    rmsym => {
-        summary => "Delete symlink at 'path'",
-        description => <<'_',
-
-Syntax: `["rmsym"]`
-
-Will fail if 'path' argument is not a symlink.
-
-The original symlink target is saved as undo data.
-
-See also: ln.
-
-_
-        check => sub {
-            my ($args, $step) = @_;
-            my $path = $args->{path};
-            if (-l $path) {
-                my $t = readlink($path) // "";
-                return [200, "OK", ["ln", $t]];
-            } elsif (-e _) {
-                return [412, "Can't rmsym $path: not a symlink"];
-            }
-            return [200, "OK"];
-        },
-        fix => sub {
-            my ($args, $step) = @_;
-            my $path = $args->{path};
-            if (unlink $s) {
-                return [200, "OK"];
-            }
-            return [500, "Can't unlink $path: $!"];
-        },
-    },
-
-    ln => {
-        summary => 'Create symlink',
-        description => <<'_',
-
-Syntax: `["ln", $t]`.
-
-Create symlink which points to $t.
-
-See also: rmsym.
-
-_
-        check => sub {
-            my ($args, $step) = @_;
-            my $path = $args->{path};
-            my $t = $step->[1];
-            if (-l $path) {
-                if (readlink($path) eq $t) {
-                    return [200, "OK"];
-                } else {
-                    return [200, "OK", ["ln"]];
-                }
-            } elsif (-e _) {
-                return [412, "Can't ln: already exists"];
-            }
-                return [200, "OK", ["rmsym"]];
-            }
-            return [200, "OK"];
-
-        elsif ($step->[0] eq 'ln') {
-            my $t = $step->[1];
-            $log->info("Creating symlink $path -> $t ...");
-            unless ((-l $path) && readlink($path) eq $t) {
-                if (symlink $t, $path) {
-                    unshift @$undo_steps, ["rmsym"];
-                } else {
-                    $err = "Can't symlink $path -> $t: $!";
-                }
-             }
-        } elsif ($step->[0] eq 'rm_r') {
-            $log->info("Removing file/dir $path ...");
-            if ((-l $path) || (-e _)) {
-                # do not bother to save file/dir if not asked
-                if ($save_undo) {
-                    if (rmove $path, $save_path) {
-                        unshift @$undo_steps, ["restore", $save_path];
-                    } else {
-                        $err = "Can't move file/dir $path -> $save_path: $!";
-                    }
-                } else {
-                    remove_tree($path, {error=>\my $e});
-                    if (@$e) {
-                        $err = "Can't remove file/dir $path: ".dumpp($e);
-                    }
-                }
-            }
         } elsif ($step->[0] eq 'rmfile') {
             $log->info("Removing file $path ...");
             # will only delete if content is unchanged from time of create,
