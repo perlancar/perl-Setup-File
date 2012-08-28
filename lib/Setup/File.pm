@@ -71,7 +71,6 @@ sub rmdir {
     my $tx_action = $args{-tx_action} // '';
     my $path      = $args{path};
     defined($path) or return [400, "Please specify path"];
-    # XXX require absolute path
     my $allow_sym = $args{allow_symlink} // 0;
 
     my $is_sym    = (-l $path);
@@ -148,23 +147,23 @@ sub mkdir {
 
     # TMP, schema
     my $tx_action = $args{-tx_action} // '';
-    my $symlink = $args{symlink};
-    defined($symlink) or return [400, "Please specify symlink"];
-    my $target = $args{target};
-    defined($target) or return [400, "Please specify target"];
+    my $path      = $args{path};
+    defined($path) or return [400, "Please specify path"];
+    my $allow_sym = $args{allow_symlink} // 0;
 
-    my $is_sym   = (-l $symlink);
-    my $exists   = $is_sym || (-e _);
-    my $curtarget; $curtarget = readlink($symlink) if $is_sym;
-    my @undo;
+    my $is_sym    = (-l $path);
+    my $exists    = $is_sym || (-e _);
+    my $is_dir    = (-d _);
+    my $is_sym_to_dir = $is_sym && (-d $path);
 
+    $log->errorf("TMP:path=$path, target=".readlink($path).", exists=$exists, is_dir=$is_dir, allow_sym=$allow_sym, is_sym_to_dir=$is_sym_to_dir");
     if ($tx_action eq 'check_state') {
-        return [412, "Path already exists"] if $exists && !$is_sym;
-        return [412, "Symlink points to another target"] if $is_sym &&
-            $curtarget ne $target;
+        my @undo;
+        return [412, "Not a dir"] if $exists &&
+            !($is_dir || $allow_sym && $is_sym_to_dir);
         if (!$exists) {
-            $log->info("nok: Symlink $symlink -> $target should be created");
-            push @undo, ['rmsym', {path => $symlink}];
+            $log->info("nok: Dir $path should be created");
+            push @undo, [rmdir => {path => $path}];
         }
         if (@undo) {
             return [200, "Fixable", undef, {undo_actions=>\@undo}];
@@ -172,7 +171,7 @@ sub mkdir {
             return [304, "Fixed"];
         }
     } elsif ($tx_action eq 'fix_state') {
-        if (symlink $target, $symlink) {
+        if (CORE::mkdir($path)) {
             return [200, "Fixed"];
         } else {
             return [500, "Can't symlink: $!"];
