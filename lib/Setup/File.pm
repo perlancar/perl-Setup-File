@@ -7,11 +7,9 @@ use Log::Any '$log';
 
 use Digest::MD5 qw(md5_hex);
 use File::chmod;
-use File::Copy::Recursive qw(rmove);
-use File::Path qw(remove_tree);
 use File::Slurp;
-use File::Temp qw(tempfile tempdir);
-use Perinci::Sub::Gen::Undoable 0.22 qw(gen_undoable_func);
+use File::Trash::Undoable;
+use SHARYANTO::File::Util qw(dir_empty);
 use UUID::Random;
 
 require Exporter;
@@ -24,137 +22,169 @@ our %SPEC;
 
 my $res;
 
-$res = gen_undoable_func(
-    v           => 2,
-    name        => 'rm_r',
-    summary     => 'Delete file/dir',
-    trash_dir   => 1,
+$SPEC{rmdir} = {
+    v           => 1.1,
+    summary     => 'Delete directory',
     description => <<'_',
 
-It actually moves the file/dir to save path (a unique name in trash).
+Fixed state: `path` doesn't exist.
 
-Fixed state: path does not exist.
+Fixable state: `path` exists and is a directory (or, a symlink to a directory,
+if `allow_symlink` option is enabled).
 
-Fixable state: path exists.
+Unfixable state: `path` exists but is not a directory.
 
 _
     args        => {
         path => {
             schema => 'str*',
+            req    => 1,
+            pos    => 0,
         },
-        save_path => {
-            summary => 'Supply save path (instead of generating a random one)',
-            schema  => 'str*',
+        allow_symlink => {
+            schema => [bool => {default => 0}],
+            summary => 'Whether to assume symlink to a directory as directory',
         },
-    },
-    check_args => sub {
-        # TMP, schema
-        my $args = shift;
-        defined($args->{path}) or return [400, "Please specify path"];
-        [200, "OK"];
-    },
-    check_or_fix_state => sub {
-        my ($which, $args, $undo) = @_;
+        delete_nonempty_dir => {
+            schema => [bool => {}],
+            summary => 'Whether to delete non-empty directory',
+            description => <<'_',
 
-        my $do_log = !$args->{-check_state};
-        my $path   = $args->{path};
-        my $exists = (-l $path) || (-e _);
-        my $save = $args->{save_path} //
-            "$args->{-undo_trash_dir}/". UUID::Random::generate;
-        my @u;
-        if ($which eq 'check') {
-            if ($exists) {
-                $log->info("nok: $path should be removed") if $do_log;
-                push @u, [__PACKAGE__.'::mv', {from => $save, to => $path}];
+If set to true, will delete non-empty directory.
+
+If set to false, will never delete non-empty directory.
+
+If unset (default), will ask for confirmation first by returning status 331.
+Caller can confirm by passing special argument `-confirm`.
+
+_
+        },
+    },
+    features => {
+        tx => {v=>2},
+        idempotent => 1,
+    },
+};
+sub rmdir {
+    my %args = @_;
+
+    # TMP, schema
+    my $tx_action = $args{-tx_action} // '';
+    my $path      = $args{path};
+    defined($path) or return [400, "Please specify path"];
+    # XXX require absolute path
+    my $allow_sym = $args{allow_symlink} // 0;
+
+    my $is_sym    = (-l $path);
+    my $exists    = $is_sym || (-e _);
+    my $is_dir    = (-d _);
+    my $is_sym_to_dir = $is_sym && (-d $path);
+    my $empty     = $exists && dir_empty($path);
+
+    my @undo;
+
+    if ($tx_action eq 'check_state') {
+        return [412, "Not a dir"] if $exists &&
+            !($is_dir || $allow_sym && $is_sym_to_dir);
+        if ($exists) {
+            if (!$empty) {
+                my $d = $args{delete_nonempty_dir};
+                if (defined($d) && !$d) {
+                    return [412, "Dir $path is not empty, but instructed ".
+                                "never to remove non-empty dir"];
+                } elsif (!defined($d)) {
+                    if (!$args{-confirm}) {
+                        return [331, "Dir $path not empty, confirm delete?"];
+                    }
+                }
             }
-            return @u ? [200,"OK",undef,{undo_data=>\@u}]:[304,"Nothing to do"];
+            $log->info("nok: Dir $path should be removed");
+            push @undo, (
+                ['File::Trash::Undoable::untrash' => {path=>$path}],
+            );
         }
-        $save = $undo->[0][1]{from};
-        if (rmove $path, $save) {
-            return [200, "OK"];
+        if (@undo) {
+            return [200, "Fixable", undef, {undo_actions=>\@undo}];
         } else {
-            return [500, "Can't move $path -> $save: $!"];
+            return [304, "Fixed"];
         }
-    },
-);
-die "Can't generate rm_r: $res->[0] - $res->[1]" unless $res->[0] == 200;
+    } elsif ($tx_action eq 'fix_state') {
+        return File::Trash::Undoable::trash(
+            -tx_action=>'fix_state', path=>$path);
+    }
+    [400, "Invalid -tx_action"];
+}
 
-$res = gen_undoable_func(
-    v           => 2,
-    name        => 'mv',
-    summary     => 'Move file/dir',
+$SPEC{mkdir} = {
+    v           => 1.1,
+    summary     => 'Create directory',
     description => <<'_',
 
-Fixed state: flag file exists. To be idempotent, function will save a flag file
-if it already moves the file, so if the flag file still exists, function will
-assume state is fixed. During undo, flag file will be removed.
+Fixed state: `path` exists and is a directory.
 
-Fixable state: `from` exists and `to` doesn't exist.
+Fixable state: `path` doesn't exist.
+
+Unfixable state: `path` exists and is not a directory.
 
 _
     args        => {
-        from => {
-            schema => 'str*',
+        path => {
+            summary => 'Path to directory',
+            schema  => 'str*',
+            req     => 1,
+            pos     => 0,
         },
-        to => {
+        allow_symlink => {
+            summary => 'Whether to assume symlink to a directory as directory',
             schema => 'str*',
         },
     },
-    trash_dir => 1,
-    check_args => sub {
-        # TMP, schema
-        my $args = shift;
-        defined($args->{from}) or return [400, "Please specify from"];
-        defined($args->{to})   or return [400, "Please specify to"];
-        [200, "OK"];
+    features => {
+        tx => {v=>2},
+        idempotent => 1,
     },
-    check_or_fix_state => sub {
-        my ($which, $args, $undo) = @_;
+};
+sub mkdir {
+    my %args = @_;
 
-        my $do_log = !$args->{-check_state};
-        my $from   = $args->{from};
-        my $to     = $args->{to};
-        my $from_exists = (-l $from) || (-e _);
-        my $to_exists   = (-l $to)   || (-e _);
-        my @u;
-        my $flag    = "$args->{-undo_trash_dir}/mv-flag-". md5_hex($from, $to);
-        my $revflag = "$args->{-undo_trash_dir}/mv-flag-". md5_hex($to, $from);
-        $log->tracef("Flag file to mark move from->to: %s, to->from: %s",
-                     $flag, $revflag);
-        if ($which eq 'check') {
-            return [304, "Already moved"] if (-f $flag) &&
-                !$from_exists && $to_exists;
-            return [412, "Source ($from) does not exist"] unless $from_exists;
-            return [412, "Target ($to) exists"] if $to_exists;
-            $log->info("nok: $from should be moved to $to") if $do_log;
-            push @u, [__PACKAGE__.'::mv', {from => $to, to => $from}];
-            return @u ? [200,"OK",undef,{undo_data=>\@u}]:[304,"Nothing to do"];
+    # TMP, schema
+    my $tx_action = $args{-tx_action} // '';
+    my $symlink = $args{symlink};
+    defined($symlink) or return [400, "Please specify symlink"];
+    my $target = $args{target};
+    defined($target) or return [400, "Please specify target"];
+
+    my $is_sym   = (-l $symlink);
+    my $exists   = $is_sym || (-e _);
+    my $curtarget; $curtarget = readlink($symlink) if $is_sym;
+    my @undo;
+
+    if ($tx_action eq 'check_state') {
+        return [412, "Path already exists"] if $exists && !$is_sym;
+        return [412, "Symlink points to another target"] if $is_sym &&
+            $curtarget ne $target;
+        if (!$exists) {
+            $log->info("nok: Symlink $symlink -> $target should be created");
+            push @undo, ['rmsym', {path => $symlink}];
         }
-        if (rmove $from, $to) {
-            write_file($flag, "");
-            unlink $revflag;
-            return [200, "OK"];
+        if (@undo) {
+            return [200, "Fixable", undef, {undo_actions=>\@undo}];
         } else {
-            return [500, "Can't move $from -> $to: $!"];
+            return [304, "Fixed"];
         }
-    },
-);
-die "Can't generate mv: $res->[0] - $res->[1]" unless $res->[0] == 200;
+    } elsif ($tx_action eq 'fix_state') {
+        if (symlink $target, $symlink) {
+            return [200, "Fixed"];
+        } else {
+            return [500, "Can't symlink: $!"];
+        }
+    }
+    [400, "Invalid -tx_action"];
+}
 
 1;
 
 __END__
-
-# return 1 if dir exists and empty
-sub _dir_is_empty {
-    my ($dir) = @_;
-    return unless (-d $dir);
-    return unless opendir my($dh), $dir;
-    my @d = grep {$_ ne '.' && $_ ne '..'} readdir($dh);
-    my $res = !@d;
-    #$log->tracef("dir_is_empty(%s)? %d", $dir, $res);
-    $res;
-}
 
 sub __build_steps {
     my $which = shift; # file for Setup::File, or dir for Setup::File::Dir
