@@ -7,6 +7,7 @@ use FindBin '$Bin';
 use lib "$Bin/lib";
 
 use File::chdir;
+use File::Path qw(remove_tree);
 use File::Slurp;
 use File::Temp qw(tempdir);
 use Setup::File;
@@ -15,6 +16,15 @@ use Test::Perinci::Tx::Manager qw(test_tx_action);
 
 my $tmpdir = tempdir(CLEANUP=>1);
 $CWD = $tmpdir;
+
+test_tx_action(
+    name        => "fixed (dir doesn't exist)",
+    tmpdir      => $tmpdir,
+    f           => 'Setup::File::rmdir',
+    args        => {path=>"dir1"},
+    reset_state => sub { remove_tree "dir1" },
+    status      => 304,
+);
 
 test_tx_action(
     name        => "empty dir",
