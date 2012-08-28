@@ -6,7 +6,6 @@ use warnings;
 use Log::Any '$log';
 
 use Digest::MD5 qw(md5_hex);
-use File::chmod;
 use File::Slurp;
 use File::Trash::Undoable;
 use SHARYANTO::File::Util qw(dir_empty);
@@ -156,7 +155,6 @@ sub mkdir {
     my $is_dir    = (-d _);
     my $is_sym_to_dir = $is_sym && (-d $path);
 
-    $log->errorf("TMP:path=$path, target=".readlink($path).", exists=$exists, is_dir=$is_dir, allow_sym=$allow_sym, is_sym_to_dir=$is_sym_to_dir");
     if ($tx_action eq 'check_state') {
         my @undo;
         return [412, "Not a dir"] if $exists &&
@@ -175,6 +173,99 @@ sub mkdir {
             return [200, "Fixed"];
         } else {
             return [500, "Can't symlink: $!"];
+        }
+    }
+    [400, "Invalid -tx_action"];
+}
+
+$SPEC{chmod} = {
+    v           => 1.1,
+    summary     => 'Set permission mode',
+    description => <<'_',
+
+Fixed state: `path` exists and mode is already correct.
+
+Fixable state: `path` exists but mode is not correct.
+
+Unfixable state: `path` doesn't exist.
+
+_
+    args        => {
+        path => {
+            summary => 'Path to directory',
+            schema  => 'str*',
+            req     => 1,
+            pos     => 0,
+        },
+        mode => {
+            summary => 'Permission mode, either numeric or symbolic (e.g. a+w)',
+            schema  => 'str*',
+            req     => 1,
+            pos     => 1,
+        },
+        follow_symlink => {
+            summary => 'Whether to follow symlink',
+            schema => [bool => {default=>0}],
+        },
+        orig_mode => {
+            summary=>'If set, confirm if current mode is not the same as this',
+            schema => 'int',
+        },
+    },
+    features => {
+        tx => {v=>2},
+        idempotent => 1,
+    },
+};
+sub chmod {
+    require File::chmod;
+
+    my %args = @_;
+
+    local $File::chmod::UMASK = 0;
+
+    # TMP, schema
+    my $tx_action  = $args{-tx_action} // '';
+    my $path       = $args{path};
+    defined($path) or return [400, "Please specify path"];
+    my $follow_sym = $args{follow_symlink} // 0;
+    my $origmode  = $args{orig_mode};
+    my $wantmode  = $args{mode};
+    defined($wantmode) or return [400, "Please specify mode"];
+
+    my $is_sym    = (-l $path);
+    return [412, "$path is a symlink"] if !$follow_sym && $is_sym;
+    my $exists    = $is_sym || (-e _);
+    my @st        = stat($path);
+    my $curmode   = $st[2] & 07777 if $exists;
+    if (!$args{-tx_recovery} && defined($origmode) && defined($curmode) &&
+            $curmode != $origmode && !$args{-confirm}) {
+        return [331, "$path: File mode has changed, chmod?"];
+    }
+    if ($wantmode =~ /\D/) {
+        return [412, "Symbolic mode requires path to exist"] unless $exists;
+        $wantmode = File::chmod::getchmod($wantmode, $path);
+    }
+
+    #$log->tracef("path=%s, curmode=%04o, wantmode=%04o", $path, $curmode, $wantmode);
+    if ($tx_action eq 'check_state') {
+        my @undo;
+        return [412, "Doesn't exist"] if !$exists;
+        if ($curmode != $wantmode) {
+            $log->infof("nok: Should chmod $path to %04o", $wantmode);
+            push @undo, [chmod => {
+                path => $path, mode=>$curmode, orig_mode=>$wantmode}];
+        }
+        if (@undo) {
+            return [200, "Fixable", undef, {undo_actions=>\@undo}];
+        } else {
+            return [304, "Fixed"];
+        }
+    } elsif ($tx_action eq 'fix_state') {
+        if (CORE::chmod($wantmode, $path)) {
+            return [200, "Fixed"];
+        } else {
+            return [500, "Can't chmod $path: $!"];
         }
     }
     [400, "Invalid -tx_action"];
