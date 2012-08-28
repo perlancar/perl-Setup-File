@@ -10,7 +10,6 @@ use File::chmod;
 use File::Slurp;
 use File::Trash::Undoable;
 use SHARYANTO::File::Util qw(dir_empty);
-use UUID::Random;
 
 require Exporter;
 our @ISA       = qw(Exporter);
