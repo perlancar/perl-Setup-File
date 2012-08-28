@@ -394,7 +394,6 @@ sub chown {
 
     my @st        = lstat($path);
     my $is_sym    = (-l _);
-    return [412, "$path is a symlink"] if !$follow_sym && $is_sym;
     my $exists    = $is_sym || (-e _);
     if ($follow_sym && $exists) {
         @st = stat($path);
