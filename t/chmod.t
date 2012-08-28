@@ -50,7 +50,25 @@ test_tx_action(
     reset_state => sub { remove_tree "p"; mkdir "p"; chmod 0755, "p" },
 );
 
-# TODO test mode changed before undo
+test_tx_action(
+    name        => "mode changed before undo (w/o confirm)",
+    tmpdir      => $tmpdir,
+    f           => 'Setup::File::chmod',
+    args        => {path=>"p", mode=>0775},
+    reset_state => sub { remove_tree "p"; mkdir "p"; chmod 0755, "p" },
+    before_undo => sub { chmod 0777, "p" },
+    undo_status => 331,
+);
+
+test_tx_action(
+    name        => "mode changed before undo (w/ confirm)",
+    tmpdir      => $tmpdir,
+    f           => 'Setup::File::chmod',
+    args        => {path=>"p", mode=>0775},
+    confirm     => 1,
+    reset_state => sub { remove_tree "p"; mkdir "p"; chmod 0755, "p" },
+    before_undo => sub { chmod 0777, "p" },
+);
 
 subtest "symlink tests" => sub {
     plan skip_all => "symlink() not available" unless eval { symlink "",""; 1 };
