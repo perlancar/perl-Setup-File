@@ -5,8 +5,6 @@ use strict;
 use warnings;
 use Log::Any '$log';
 
-use Digest::MD5 qw(md5_hex);
-use File::Slurp;
 use File::Trash::Undoable;
 use SHARYANTO::File::Util qw(dir_empty);
 
@@ -181,7 +179,7 @@ sub mkdir {
 
 $SPEC{chmod} = {
     v           => 1.1,
-    summary     => 'Set permission mode',
+    summary     => "Set file's permission mode",
     description => <<'_',
 
 Fixed state: `path` exists and mode is already correct.
@@ -193,7 +191,7 @@ Unfixable state: `path` doesn't exist.
 _
     args        => {
         path => {
-            summary => 'Path to directory',
+            summary => 'Path to file/directory',
             schema  => 'str*',
             req     => 1,
             pos     => 0,
@@ -230,32 +228,34 @@ sub chmod {
     my $path       = $args{path};
     defined($path) or return [400, "Please specify path"];
     my $follow_sym = $args{follow_symlink} // 0;
-    my $origmode  = $args{orig_mode};
-    my $wantmode  = $args{mode};
-    defined($wantmode) or return [400, "Please specify mode"];
+    my $orig_mode  = $args{orig_mode};
+    my $want_mode  = $args{mode};
+    defined($want_mode) or return [400, "Please specify mode"];
 
     my $is_sym    = (-l $path);
     return [412, "$path is a symlink"] if !$follow_sym && $is_sym;
     my $exists    = $is_sym || (-e _);
     my @st        = stat($path);
-    my $curmode   = $st[2] & 07777 if $exists;
-    if (!$args{-tx_recovery} && defined($origmode) && defined($curmode) &&
-            $curmode != $origmode && !$args{-confirm}) {
+    my $cur_mode  = $st[2] & 07777 if $exists;
+    if (!$args{-tx_recovery} && defined($orig_mode) && defined($cur_mode) &&
+            $cur_mode != $orig_mode && !$args{-confirm}) {
         return [331, "$path: File mode has changed, chmod?"];
     }
-    if ($wantmode =~ /\D/) {
+    if ($want_mode =~ /\D/) {
         return [412, "Symbolic mode requires path to exist"] unless $exists;
-        $wantmode = File::chmod::getchmod($wantmode, $path);
+        $want_mode = File::chmod::getchmod($want_mode, $path);
     }
 
-    #$log->tracef("path=%s, curmode=%04o, wantmode=%04o", $path, $curmode, $wantmode);
+    #$log->tracef("path=%s, cur_mode=%04o, want_mode=%04o", $path, $cur_mode, $want_mode);
     if ($tx_action eq 'check_state') {
         my @undo;
         return [412, "Doesn't exist"] if !$exists;
-        if ($curmode != $wantmode) {
-            $log->infof("nok: Should chmod $path to %04o", $wantmode);
+        if ($cur_mode != $want_mode) {
+            $log->infof("nok: Should chmod $path to %04o", $want_mode);
             push @undo, [chmod => {
-                path => $path, mode=>$curmode, orig_mode=>$wantmode}];
+                path => $path, mode=>$cur_mode, orig_mode=>$want_mode,
+                follow_symlink => $follow_sym,
+            }];
         }
         if (@undo) {
             return [200, "Fixable", undef, {undo_actions=>\@undo}];
@@ -263,10 +263,185 @@ sub chmod {
             return [304, "Fixed"];
         }
     } elsif ($tx_action eq 'fix_state') {
-        if (CORE::chmod($wantmode, $path)) {
+        if (CORE::chmod($want_mode, $path)) {
             return [200, "Fixed"];
         } else {
             return [500, "Can't chmod $path: $!"];
+        }
+    }
+    [400, "Invalid -tx_action"];
+}
+
+$SPEC{chown} = {
+    v           => 1.1,
+    summary     => "Set file's ownership",
+    description => <<'_',
+
+Fixed state: `path` exists and ownership is already correct.
+
+Fixable state: `path` exists but ownership is not correct.
+
+Unfixable state: `path` doesn't exist.
+
+_
+    args        => {
+        path => {
+            summary => 'Path to file/directory',
+            schema  => 'str*',
+            req     => 1,
+            pos     => 0,
+        },
+        owner => {
+            summary => 'Numeric UID or username',
+            schema  => 'str*',
+        },
+        group => {
+            summary => 'Numeric GID or group',
+            schema  => 'str*',
+        },
+        follow_symlink => {
+            summary => 'Whether to follow symlink',
+            schema => [bool => {default=>0}],
+        },
+        orig_owner => {
+            summary=>'If set, confirm if current owner is not the same as this',
+            schema => 'str',
+        },
+        orig_group => {
+            summary=>'If set, confirm if current group is not the same as this',
+            schema => 'str',
+        },
+    },
+    features => {
+        tx => {v=>2},
+        idempotent => 1,
+    },
+};
+sub chown {
+    require Lchown;
+    return [412, "lchown() is not available on this system"] unless
+        Lchown::LCHOWN_AVAILABLE();
+
+    my %args = @_;
+
+    # TMP, schema
+    my $tx_action  = $args{-tx_action} // '';
+    my $path       = $args{path};
+    defined($path) or return [400, "Please specify path"];
+    my $follow_sym = $args{follow_symlink} // 0;
+    my $orig_owner = $args{orig_owner};
+    my $orig_group = $args{orig_group};
+    my $want_owner = $args{owner};
+    my $want_group = $args{group};
+    defined($want_owner) || defined($want_group)
+        or return [400, "Please specify at least either owner/group"];
+
+    my ($orig_uid, $orig_uname);
+    if (defined $orig_owner) {
+        if ($orig_owner =~ /\A\d+\z/) {
+            $orig_uid = $orig_owner;
+            my @ent = getpwuid($orig_uid);
+            $orig_uname = $ent[0] if @ent;
+        } else {
+            $orig_uname = $orig_owner;
+            my @ent = getpwnam($orig_uname);
+            return [412, "User doesn't exist: $orig_uname"] unless @ent;
+            $orig_uid = $ent[2];
+        }
+    }
+
+    my ($want_uid, $want_uname);
+    if (defined $want_owner) {
+        if ($want_owner =~ /\A\d+\z/) {
+            $want_uid = $want_owner;
+            my @ent = getpwuid($want_uid);
+            $want_uname = $ent[0] if @ent;
+        } else {
+            $want_uname = $want_owner;
+            my @ent = getpwnam($want_uname);
+            return [412, "User doesn't exist: $want_uname"] unless @ent;
+            $want_uid = $ent[2];
+        }
+    }
+
+    my ($orig_gid, $orig_gname);
+    if (defined $orig_group) {
+        if ($orig_group =~ /\A\d+\z/) {
+            $orig_gid = $orig_group;
+            my @grent = getgrgid($orig_gid);
+            $orig_gname = $grent[0] if @grent;
+        } else {
+            $orig_gname = $orig_group;
+            my @grent = getgrnam($orig_gname);
+            return [412, "Group doesn't exist: $orig_gname"] unless @grent;
+            $orig_gid = $grent[2];
+        }
+    }
+
+    my ($want_gid, $want_gname);
+    if (defined $want_group) {
+        if ($want_group =~ /\A\d+\z/) {
+            $want_gid = $want_group;
+            my @grent = getgrgid($want_gid);
+            $want_gname = $grent[0] if @grent;
+        } else {
+            $want_gname = $want_group;
+            my @grent = getgrnam($want_gname);
+            return [412, "Group doesn't exist: $want_gname"] unless @grent;
+            $want_gid = $grent[2];
+        }
+    }
+
+    my @st        = lstat($path);
+    my $is_sym    = (-l _);
+    return [412, "$path is a symlink"] if !$follow_sym && $is_sym;
+    my $exists    = $is_sym || (-e _);
+    if ($follow_sym && $exists) {
+        @st = stat($path);
+        return [500, "Can't stat $path (2): $!"] unless @st;
+    }
+    my $cur_uid   = $st[4];
+    my $cur_gid   = $st[5];
+    if (!$args{-tx_recovery} && !$args{-confirm}) {
+        my $changed = defined($orig_uid) && $orig_uid != $cur_uid ||
+            defined($orig_gid) && $orig_gid != $cur_gid;
+        return [331, "$path: File mode has changed, chmod?"] if $changed;
+    }
+
+    #$log->tracef("path=%s, cur_uid=%s, cur_gid=%s, want_uid=%s, want_uname=%s, want_gid=%s, want_gname=%s", $cur_uid, $cur_gid, $want_uid, $want_uname, $want_gid, $want_gname);
+    if ($tx_action eq 'check_state') {
+        my @undo;
+        return [412, "Doesn't exist"] if !$exists;
+        if (defined($want_uid) && $cur_uid != $want_uid ||
+                defined($want_gid) && $cur_gid != $want_gid) {
+            $log->infof("nok: Should chown $path to (%s, %s)",
+                        $want_owner, $want_group);
+            push @undo, [chown => {
+                path  => $path,
+                owner => (defined($want_uid) &&
+                              $cur_uid != $want_uid ? $cur_uid : undef),
+                group => (defined($want_gid) &&
+                              $cur_gid != $want_gid ? $cur_gid : undef),
+                orig_owner => $want_owner, orig_group => $want_group,
+                follow_symlink => $follow_sym,
+            }];
+        }
+        if (@undo) {
+            return [200, "Fixable", undef, {undo_actions=>\@undo}];
+        } else {
+            return [304, "Fixed"];
+        }
+    } elsif ($tx_action eq 'fix_state') {
+        my $res;
+        if ($follow_sym) {
+            $res = CORE::chown   ($want_uid // -1, $want_gid // -1, $path);
+        } else {
+            $res = Lchown::lchown($want_uid // -1, $want_gid // -1, $path);
+        }
+        if ($res) {
+            return [200, "Fixed"];
+        } else {
+            return [500, "Can't chown $path: $!"];
         }
     }
     [400, "Invalid -tx_action"];
@@ -708,6 +883,9 @@ _
 
     steps => $steps,
 );
+
+use Digest::MD5 qw(md5_hex);
+use File::Slurp;
 
 1;
 # ABSTRACT: Setup file (existence, mode, permission, content)
