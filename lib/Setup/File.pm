@@ -80,6 +80,7 @@ sub rmdir {
 
     my @undo;
 
+    #$log->tracef("path=%s, exists=%s, is_dir=%s, allow_sym=%s, is_sym_to_dir=%s", $path, $exists, $is_dir, $allow_sym, $is_sym_to_dir);
     if ($tx_action eq 'check_state') {
         return [412, "Not a dir"] if $exists &&
             !($is_dir || $allow_sym && $is_sym_to_dir);
