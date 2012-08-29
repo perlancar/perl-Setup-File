@@ -727,7 +727,8 @@ sub mkfile {
 
         if ($fix_content) {
             my $res = File::Trash::Undoable::trash(
-                -tx_action=>'fix_state', path=>$path, suffix=>index($taid,0,8));
+                -tx_action=>'fix_state', path=>$path,
+                    suffix=>substr($taid,0,8));
             return $res unless $res->[0] == 200;
         }
 
