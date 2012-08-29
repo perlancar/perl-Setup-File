@@ -66,6 +66,8 @@ sub rmdir {
 
     # TMP, schema
     my $tx_action = $args{-tx_action} // '';
+    my $taid      = $args{-tx_action_id}
+        or return [412, "Please specify -tx_action_id"];
     my $path      = $args{path};
     defined($path) or return [400, "Please specify path"];
     my $allow_sym = $args{allow_symlink} // 0;
@@ -96,7 +98,8 @@ sub rmdir {
             }
             $log->info("nok: Dir $path should be removed");
             push @undo, (
-                ['File::Trash::Undoable::untrash' => {path=>$path}],
+                ['File::Trash::Undoable::untrash' =>
+                     {path=>$path, suffix=>substr($taid,0,8)}],
             );
         }
         if (@undo) {
@@ -106,7 +109,7 @@ sub rmdir {
         }
     } elsif ($tx_action eq 'fix_state') {
         return File::Trash::Undoable::trash(
-            -tx_action=>'fix_state', path=>$path);
+            -tx_action=>'fix_state', suffix=>substr($taid,0,8), path=>$path);
     }
     [400, "Invalid -tx_action"];
 }
@@ -504,6 +507,8 @@ sub rmfile {
 
     # TMP, schema
     my $tx_action = $args{-tx_action} // '';
+    my $taid      = $args{-tx_action_id}
+        or return [400, "Please specify -tx_action_id"];
     my $path      = $args{path};
     defined($path) or return [400, "Please specify path"];
     my $allow_sym = $args{allow_symlink} // 0;
@@ -543,7 +548,8 @@ sub rmfile {
             }
             $log->info("nok: File $path should be removed");
             push @undo, (
-                ['File::Trash::Undoable::untrash' => {path=>$path}],
+                ['File::Trash::Undoable::untrash' =>
+                     {path=>$path, suffix=>substr($taid,0,8)}],
             );
         }
         if (@undo) {
@@ -553,7 +559,187 @@ sub rmfile {
         }
     } elsif ($tx_action eq 'fix_state') {
         return File::Trash::Undoable::trash(
-            -tx_action=>'fix_state', path=>$path);
+            -tx_action=>'fix_state', suffix=>substr($taid,0,8), path=>$path);
+    }
+    [400, "Invalid -tx_action"];
+}
+
+$SPEC{mkfile} = {
+    v           => 1.1,
+    summary     => 'Create file (and/or set content)',
+    description => <<'_',
+
+Fixed state: `path` exists, is a file, and content is correct.
+
+Fixable state: `path` doesn't exist. Or `path` exists, is a file, and content is
+incorrect. Or `orig_path` specified and exists.
+
+Unfixable state: `path` exists and is not a file.
+
+_
+    args        => {
+        path => {
+            summary => 'Path to file',
+            schema  => 'str*',
+            req     => 1,
+            pos     => 0,
+        },
+        allow_symlink => {
+            summary => 'Whether to regard symlink to a file as file',
+            schema => 'str*',
+        },
+        content => {
+            schema  => 'str',
+            summary => 'Desired file content',
+            description => <<'_',
+
+Alternatively you can also use `content_md5`, or `gen_content_func` and
+`check_content_func`.
+
+_
+        },
+        content_md5 => {
+            schema  => 'str',
+            summary => 'Check content against MD5 hash',
+            description => <<'_',
+
+MD5 hash should be expressed in hex (e.g. bed6626e019e5870ef01736b3553e570).
+
+Used when checking content of existing file.
+
+Alternatively you can also use `content`, or `check_content_func`.
+
+_
+        },
+        check_content_func => {
+            schema  => 'str',
+            summary => 'Name of function to check content',
+            description => <<'_',
+
+If unset, file will not be checked for its content. If set, function will be
+called whenever file content needs to be checked. Function will be passed the
+reference to file content and should return a boolean value indicating whether
+content is acceptable. If it returns a false value, content is deemed
+unacceptable and needs to be fixed.
+
+Alternatively you can use the simpler `content` or `content_md5` argument.
+
+_
+        },
+        gen_content_func => {
+            schema  => 'str',
+            summary => 'Name of function to generate content',
+            description => <<'_',
+
+If set, whenever a new file content is needed (e.g. when file is created or file
+content reset), this function will be called to provide it. If unset, empty
+string will be used instead.
+
+Function will be passed the reference to the current content (or undef) and
+should return the new content.
+
+Alternatively you can use the simpler `content` argument.
+
+_
+        },
+    },
+    features => {
+        tx => {v=>2},
+        idempotent => 1,
+    },
+};
+sub mkfile {
+    require Digest::MD5;
+    require File::Slurp;
+
+    my %args = @_;
+
+    # TMP, schema
+    my $tx_action = $args{-tx_action} // '';
+    my $taid      = $args{-tx_action_id}
+        or return [400, "Please specify -tx_action_id"];
+    my $path      = $args{path};
+    defined($path) or return [400, "Please specify path"];
+    my $allow_sym = $args{allow_symlink} // 0;
+
+    my @st        = lstat($path);
+    my $is_sym    = (-l _);
+    my $exists    = $is_sym || (-e _);
+    my $is_file   = (-f _);
+    my $is_sym_to_file = $is_sym && (-f $path);
+    return [412, "Not a file"] if $exists &&
+        !($is_file || $allow_sym && $is_sym_to_file);
+
+    my $fix_content;
+    if ($exists) {
+        my $ct = File::Slurp::read_file($path, err_mode=>'quiet');
+        return [500, "Can't read file content: $!"] unless defined($ct);
+        my $res;
+        if (defined $args{check_content_func}) {
+            no strict 'refs';
+            $fix_content = !\&{$args{check_content_func}}->(\$ct);
+        } elsif (defined $args{content_md5}) {
+            $fix_content = Digest::MD5::md5_hex($ct) ne $args{content_md5};
+        } elsif (defined $args{content}) {
+            $fix_content = $ct ne $args{content};
+        }
+    }
+
+    if ($tx_action eq 'check_state') {
+
+        my @undo;
+        if ($exists) {
+            if ($fix_content) {
+                $log->info("nok: File $path content incorrect");
+                push @undo, (
+                    ["File::Trash::Undoable::untrash",
+                     {path=>$path, suffix=>substr($taid,0,8)}],
+                    ["File::Trash::Undoable::trash", {path=>$path}],
+                );
+            }
+        } else {
+            $log->info("nok: File $path should be created");
+            my $ct = "";
+            if (defined $args{gen_content_func}) {
+                no strict 'refs';
+                $ct = \&{$args{gen_content_func}}->(\$ct);
+            } elsif (defined $args{content}) {
+                $ct = $args{content};
+            }
+            my $md5 = Digest::MD5::md5_hex($ct);
+            push @undo, [rmfile => {path => $path, orig_content_md5=>$md5}];
+        }
+        if (@undo) {
+            return [200, "Fixable", undef, {undo_actions=>\@undo}];
+        } else {
+            return [304, "Fixed"];
+        }
+
+    } elsif ($tx_action eq 'fix_state') {
+
+        if ($fix_content) {
+            my $res = File::Trash::Undoable::trash(
+                -tx_action=>'fix_state', path=>$path, suffix=>index($taid,0,8));
+            return $res unless $res->[0] == 200;
+        }
+
+        if ($fix_content || !$exists) {
+            my $ct = "";
+            if (defined $args{gen_content_func}) {
+                no strict 'refs';
+                $ct = \&{$args{gen_content_func}}->(\$ct);
+            } elsif (defined $args{content}) {
+                $ct = $args{content};
+            }
+            if (File::Slurp::write_file($path, {errmode=>'quiet'}, $ct)) {
+                return [200, "OK"];
+            } else {
+                return [500, "Can't write file $path: $!"];
+            }
+        } else {
+            # shouldn't reach here
+            return [304, "Nothing done"];
+        }
     }
     [400, "Invalid -tx_action"];
 }
@@ -562,9 +748,31 @@ sub rmfile {
 
 __END__
 
-sub __build_steps {
-    my $which = shift; # file for Setup::File, or dir for Setup::File::Dir
-    my $args = shift;
+sub _setup_file_or_dir {
+    my %args = @_;
+
+    check_args => sub {
+        my $args = shift;
+        $args->{path} or return [400, "Please specify path"];
+        $args->{path} =~ m!^/!
+            or return [400, "Please specify an absolute path"];
+        $args->{allow_symlink}   //= 1;
+        $args->{replace_file}    //= 1;
+        $args->{replace_dir}     //= 1;
+        $args->{replace_symlink} //= 1;
+
+        my $ct       = $args->{content};
+        my $check_ct = $args->{check_content_func};
+        my $gen_ct   = $args->{gen_content_func};
+        return [400, "If check_content_func is specified, ".
+                    "gen_content_func must also be specified"]
+            if defined($check_ct) && !defined($gen_ct);
+        return [400, "If content is specified, then check_content_func/".
+                    "gen_content_func must not be specified (and vice versa)"]
+            if defined($ct) && (defined($check_ct) || defined($gen_ct));
+        [200, "OK"];
+    },
+
 
     my $path = $args->{path};
 
@@ -676,16 +884,16 @@ sub __build_steps {
                 push @steps, ["chown", undef, $gid];
             }
         }
-        if ($args->{check_content_code} || defined($args->{content})) {
+        if ($args->{check_content_func} || defined($args->{content})) {
             my $cur_content = read_file($path, err_mode=>'quiet');
             return [500, "Can't read file content: $!"]
                 unless defined($cur_content);
-            my $res = $args->{check_content_code} ?
-                $args->{check_content_code}->(\$cur_content) :
+            my $res = $args->{check_content_func} ?
+                $args->{check_content_func}->(\$cur_content) :
                     $cur_content eq $args->{content};
             unless ($res) {
                 $log->infof("nok: file $path content incorrect");
-                my $ref_ct = $args->{gen_content_code}->(\$cur_content);
+                my $ref_ct = $args->{gen_content_func}->(\$cur_content);
                 $ref_ct = \$ref_ct unless ref($ref_ct);
                 push @steps, ["set_content", $$ref_ct]; # JSON doesnt do \scalar
             }
@@ -693,135 +901,8 @@ sub __build_steps {
     } # block
 }
 
-# OLD
-
-our $steps = {
-        } elsif ($step->[0] eq 'rmdir') {
-            $log->info("Removing dir $path ...");
-            if ((-l $path) || (-e _)) {
-                if (rmdir $path) {
-                    unshift @$undo_steps, ["create"];
-                } else {
-                    $err = "Can't rmdir $path: $!";
-                }
-            }
-        } elsif ($step->[0] eq 'restore') {
-            $log->info("Restoring $step->[1] -> $path ...");
-            if ((-l $path) || (-e _)) {
-                $err = "Can't restore $step->[1] -> $path: already exists";
-            } elsif (rmove $step->[1], $path) {
-                unshift @$undo_steps, ["rm_r"];
-            } else {
-                $err = "Can't restore $step->[1] -> $path: $!";
-            }
-        } elsif ($step->[0] eq 'create') {
-            $log->info("Creating $path ...");
-            if ((-l $path) || (-e _)) {
-                if ((-f _)) {
-                    my $cur_content = read_file($path, err_mode=>'quiet');
-                    return [500, "Can't read file content: $!"]
-                        unless defined($cur_content);
-                    if ($cur_content ne ${$step->[1]}) {
-                        $err = "Can't create $path: file already exists but ".
-                            "with different content";
-                    }
-                } else {
-                    $err = "Can't create $path: already exists but not a file";
-                }
-            } else {
-                {
-                    if ($which eq 'dir') {
-                        mkdir $path
-                            or do { $err = "Can't mkdir: $!"; last };
-                        chown $owner//-1, $group//-1, $path
-                            or do { $err = "Can't chown: $!"; last };
-                        defined($mode) and chmod $mode, $path ||
-                            do { $err = "Can't chmod: $!"; last };
-                        unshift @$undo_steps, ["rmdir"];
-                    } else {
-                        my $ct;
-                        if (defined $step->[1]) {
-                            $ct = ${$step->[1]};
-                        } else {
-                            if ($gen_ct) {
-                                my $ref_ct = $gen_ct->(\$cur_content);
-                                $ct = ref($ref_ct) ? $$ref_ct : $ref_ct;
-                            } else {
-                                $ct = $content;
-                            }
-                            $ct //= "";
-                        }
-                        my $ct_hash = md5_hex($ct);
-                        write_file($path, {err_mode=>'quiet', atomic=>1}, $ct)
-                            or do { $err = "Can't write file: $!"; last };
-                        chown $owner//-1, $group//-1, $path
-                            or do { $err = "Can't chown: $!"; last };
-                        defined($mode) and chmod $mode, $path ||
-                            do { $err = "Can't chmod: $!"; last };
-                        unshift @$undo_steps, ["rmfile", $ct_hash];
-                    }
-                }
-            }
-        } elsif ($step->[0] eq 'set_content') {
-            $log->info("Setting content ...");
-            {
-                my $cur_content = read_file($path, err_mode=>'quiet');
-                defined($cur_content)
-                    or do { $err = "Can't read file: $!"; last };
-                write_file($path, {err_mode=>'quiet', atomic=>1}, ${$step->[1]})
-                    or do { $err = "Can't write file: $!"; last };
-                unshift @$undo_steps, ["set_content", \$cur_content];
-                # need to chown + chmod temporary file again
-                chown $owner//-1, $group//-1, $path
-                    or do { $log->warn("Can't chown: $!") };
-                defined($mode) and chmod $mode, $path ||
-                    do { $log->warn("Can't chmod: $!") };
-            }
-        } elsif ($step->[0] eq 'chmod') {
-            $log->info("Chmod $path ...");
-            my @st = lstat($path);
-            if (!@st) {
-                $log->warn("Can't stat, skipping chmod");
-            } else {
-                if (chmod $step->[1], $path) {
-                    unshift @$undo_steps, ["chmod", $st[2] & 07777];
-                } else {
-                    $err = $!;
-                }
-            }
-        } elsif ($step->[0] eq 'chown') {
-            $log->info("Chown $path ...");
-            my @st = lstat($path);
-            if (!@st) {
-                $log->warn("Can't stat, skipping chmod");
-            } else {
-                if (chown $step->[1]//-1, $step->[2]//-1, $path) {
-                    unshift @$undo_steps,
-                        ["chown",
-                         defined($step->[1]) ? $st[4] : undef,
-                         defined($step->[2]) ? $st[5] : undef];
-                } else {
-                    $err = $!;
-                }
-            }
-        } else {
-            die "BUG: Unknown step command: $step->[0]";
-        }
-        if ($err) {
-            if ($rollback) {
-                die "Failed rollback step $i of 0..".(@$steps-1).": $err";
-            } else {
-                $log->tracef("Step failed: $err, performing rollback (%s)...",
-                             $undo_steps);
-                $rollback = $err;
-                $steps = $undo_steps;
-                goto STEP; # perform steps all over again
-            }
-        }
-    }
-    };
-
-my $res = gen_undoable_func(
+$SPEC{setup_file} = {
+    v        => 1.1,
     name     => 'setup_file',
     summary  => "Setup file (existence, mode, permission, content)",
     description => <<'_',
@@ -830,11 +911,8 @@ On do, will create file (if it doesn't already exist) and correct
 mode/permission as well as content.
 
 On undo, will restore old mode/permission/content, or delete the file again if
-it was created by this function *and* its content hasn't changed since.
-
-If given, -undo_hint should contain {tmp_dir=>...} to specify temporary
-directory to save replaced file/dir. Temporary directory defaults to ~/.setup,
-it will be created if not exists.
+it was created by this function *and* its content hasn't changed since (if
+content/ownership/mode has changed, function will request confirmation).
 
 _
     args     => {
@@ -883,38 +961,38 @@ _
             summary => 'Desired file content',
             description => <<'_',
 
-Alternatively you can also use check_content_code & gen_content_code.
+Alternatively you can also use `check_content_func` & `gen_content_func`.
 
 _
         },
-        check_content_code => {
-            schema  => 'code',
-            summary => 'Code to check content',
+        check_content_func => {
+            schema  => 'str',
+            summary => 'Name of function to check content',
             description => <<'_',
 
-If unset, file will not be checked for its content. If set, code will be called
-whenever file content needs to be checked. Code will be passed the reference to
-file content and should return a boolean value indicating whether content is
-acceptable. If it returns a false value, content is deemed unacceptable and
-needs to be fixed.
+If unset, file will not be checked for its content. If set, function will be
+called whenever file content needs to be checked. Function will be passed the
+reference to file content and should return a boolean value indicating whether
+content is acceptable. If it returns a false value, content is deemed
+unacceptable and needs to be fixed.
 
-Alternatively you can use the simpler 'content' argument.
+Alternatively you can use the simpler `content` argument.
 
 _
         },
-        gen_content_code => {
-            schema  => 'code',
-            summary => 'Code to generate content',
+        gen_content_func => {
+            schema  => 'str',
+            summary => 'Name of function to generate content',
             description => <<'_',
 
 If set, whenever a new file content is needed (e.g. when file is created or file
-content reset), this code will be called to provide it. If unset, empty string
-will be used instead.
+content reset), this function will be called to provide it. If unset, empty
+string will be used instead.
 
-Code will be passed the reference to the current content (or undef) and should
-return the new content.
+Function will be passed the reference to the current content (or undef) and
+should return the new content.
 
-Alternatively you can use the simpler 'content' argument.
+Alternatively you can use the simpler `content` argument.
 
 _
         },
@@ -923,8 +1001,8 @@ _
             summary => 'Whether symlink is allowed',
             description => <<'_',
 
-If existing file is a symlink then if allow_symlink is false then it is an
-unacceptable condition (the symlink will be replaced if replace_symlink is
+If existing file is a symlink to a file then if allow_symlink is false then it
+is an unacceptable condition (the symlink will be replaced if replace_symlink is
 true).
 
 Note: if you want to setup symlink instead, use Setup::Symlink.
@@ -944,40 +1022,20 @@ _
             summary => "Replace existing dir if it needs to be replaced",
         },
     },
-
-    check_args => sub {
-        my $args = shift;
-        $args->{path} or return [400, "Please specify path"];
-        $args->{path} =~ m!^/!
-            or return [400, "Please specify an absolute path"];
-        $args->{allow_symlink}   //= 1;
-        $args->{replace_file}    //= 1;
-        $args->{replace_dir}     //= 1;
-        $args->{replace_symlink} //= 1;
-
-        my $ct       = $args->{content};
-        my $check_ct = $args->{check_content_code};
-        my $gen_ct   = $args->{gen_content_code};
-        return [400, "If check_content_code is specified, ".
-                    "gen_content_code must also be specified"]
-            if defined($check_ct) && !defined($gen_ct);
-        return [400, "If content is specified, then check_content_code/".
-                    "gen_content_code must not be specified (and vice versa)"]
-            if defined($ct) && (defined($check_ct) || defined($gen_ct));
-        [200, "OK"];
-    },
-
-    build_steps => sub {
-        __build_steps('file', @_);
-    },
-
-    steps => $steps,
-);
-
-use File::Slurp;
+};
+sub setup_file {
+    _setup_file_or_dir(@_, -which => 'file');
+}
 
 1;
 # ABSTRACT: Setup file (existence, mode, permission, content)
+
+=head1 FAQ
+
+=head2 Why not allowing coderef in 'check_content_func' and 'gen_content_func' argument?
+
+Because transactional function needs to store its argument in database
+(currently in JSON), coderefs are not representable in JSON.
 
 =head1 SEE ALSO
 
