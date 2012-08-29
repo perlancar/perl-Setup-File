@@ -1,12 +1,27 @@
 Revision history for Setup-File
 
-0.14    2012-03-28
+0.15    2012-08-29 (SHARYANTO)
+
+        [ENHANCEMENTS]
+
+        - Update to Rinci 1.1.28 (transaction protocol v=2).
+
+        - Add various simpler functions like rmdir(), mkdir(), rmfile(),
+          mkfile(), chown(), chmod() (not exported).
+
+        [INCOMPATIBLE CHANGES]
+
+        - Move setup_dir() from Setup::File::Dir to Setup::File (I'm too lazy to
+          put fully-qualified function names to the actions).
+
+
+0.14    2012-03-28 (SHARYANTO)
 
         No functional changes. Split specification to Setup dist. Split
         Test::Setup to its own dist.
 
 
-0.13    2012-03-28
+0.13    2012-03-28 (SHARYANTO)
 
         - Refactor: create Test::Setup to reduce repetition when testing setup
           functions (testing dry-run, do, undo, redo, ...). Convert all test
@@ -20,34 +35,34 @@ Revision history for Setup-File
         - build: Replace PodWeaver SubSpec plugin with Perinci.
 
 
-0.12    2012-03-02
+0.12    2012-03-02 (SHARYANTO)
 
         No functional changes. Change references to Sub::Spec now to Rinci.
 
 
-0.11    2012-01-26
+0.11    2012-01-26 (SHARYANTO)
 
         A small fix: make it clear that gen_content_code and check_content_code
         work with *reference* to content (but gen_content_code is also allowed
         to return the actual content [undocumented], for flexibility).
 
 
-0.10    2011-12-29
+0.10    2011-12-29 (SHARYANTO)
 
         No functional changes. Update/small fixes to documentation.
 
 
-0.09    2011-05-18
+0.09    2011-05-18 (SHARYANTO)
 
         No functional changes. Tweak log messages.
 
 
-0.08    2011-05-18
+0.08    2011-05-18 (SHARYANTO)
 
         No functional changes. Changed logging levels.
 
 
-0.07    2011-05-18
+0.07    2011-05-18 (SHARYANTO)
 
         [ENHANCEMENTS]
 
@@ -55,12 +70,12 @@ Revision history for Setup-File
           gen_content_code/check_content_code).
 
 
-0.06    2011-05-17
+0.06    2011-05-17 (SHARYANTO)
 
         No functional changes. POD touches/fixes, improve error message.
 
 
-0.05    2011-04-28
+0.05    2011-04-28 (SHARYANTO)
 
         [INCOMPATIBLE CHANGES]
 
@@ -76,7 +91,7 @@ Revision history for Setup-File
         - Some fixes.
 
 
-0.04    2011-04-27
+0.04    2011-04-27 (SHARYANTO)
 
         [ENHANCEMENTS]
 
@@ -86,7 +101,7 @@ Revision history for Setup-File
           changed.
 
 
-0.03    2011-04-21
+0.03    2011-04-21 (SHARYANTO)
 
         No functional changes.
 
@@ -95,7 +110,7 @@ Revision history for Setup-File
         - Rename module Setup::Dir -> Setup::File::Dir.
 
 
-0.02    2011-04-18
+0.02    2011-04-18 (SHARYANTO)
 
         [BUG FIXES]
 
@@ -106,6 +121,6 @@ Revision history for Setup-File
         - Change terminology: undo/redo info -> undo/redo data.
 
 
-0.01    2011-04-15
+0.01    2011-04-15 (SHARYANTO)
 
         - First release (tests incomplete).
