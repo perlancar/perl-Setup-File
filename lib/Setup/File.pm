@@ -39,7 +39,7 @@ _
         },
         allow_symlink => {
             schema => [bool => {default => 0}],
-            summary => 'Whether to assume symlink to a directory as directory',
+            summary => 'Whether to regard symlink to a directory as directory',
         },
         delete_nonempty_dir => {
             schema => [bool => {}],
@@ -131,7 +131,7 @@ _
             pos     => 0,
         },
         allow_symlink => {
-            summary => 'Whether to assume symlink to a directory as directory',
+            summary => 'Whether to regard symlink to a directory as directory',
             schema => 'str*',
         },
     },
@@ -239,7 +239,7 @@ sub chmod {
     my $cur_mode  = $st[2] & 07777 if $exists;
     if (!$args{-tx_recovery} && defined($orig_mode) && defined($cur_mode) &&
             $cur_mode != $orig_mode && !$args{-confirm}) {
-        return [331, "$path: File mode has changed, chmod?"];
+        return [331, "File $path has changed permission mode, confirm chmod?"];
     }
     if ($want_mode =~ /\D/) {
         return [412, "Symbolic mode requires path to exist"] unless $exists;
@@ -404,7 +404,8 @@ sub chown {
     if (!$args{-tx_recovery} && !$args{-confirm}) {
         my $changed = defined($orig_uid) && $orig_uid != $cur_uid ||
             defined($orig_gid) && $orig_gid != $cur_gid;
-        return [331, "$path: File mode has changed, chmod?"] if $changed;
+        return [331, "File $path has changed ownership, confirm chown?"]
+            if $changed;
     }
 
     #$log->tracef("path=%s, cur_uid=%s, cur_gid=%s, want_uid=%s, want_uname=%s, want_gid=%s, want_gname=%s", $cur_uid, $cur_gid, $want_uid, $want_uname, $want_gid, $want_gname);
@@ -442,6 +443,117 @@ sub chown {
         } else {
             return [500, "Can't chown $path: $!"];
         }
+    }
+    [400, "Invalid -tx_action"];
+}
+
+$SPEC{rmfile} = {
+    v           => 1.1,
+    summary     => 'Delete file',
+    description => <<'_',
+
+Fixed state: `path` doesn't exist.
+
+Fixable state: `path` exists and is a file (or, a symlink to a file, if
+`allow_symlink` option is enabled).
+
+Unfixable state: `path` exists but is not a file.
+
+_
+    args        => {
+        path => {
+            schema => 'str*',
+            req    => 1,
+            pos    => 0,
+        },
+        allow_symlink => {
+            schema => [bool => {default => 0}],
+            summary => 'Whether to regard symlink to a file as file',
+        },
+        orig_content => {
+            summary =>
+                'If set, confirm if current content is not the same as this',
+            description => <<'_',
+
+Alternatively, you can use `orig_content_hash`.
+
+_
+            schema => 'str',
+        },
+        orig_content_md5 => {
+            summary =>
+                'If set, confirm if current content MD5 hash '.
+                    'is not the same as this',
+            description => <<'_',
+
+MD5 hash should be expressed in hex (e.g. bed6626e019e5870ef01736b3553e570).
+
+Alternatively, you can use `orig_content` (for shorter content).
+
+_
+            schema => 'str',
+        },
+    },
+    features => {
+        tx => {v=>2},
+        idempotent => 1,
+    },
+};
+sub rmfile {
+    my %args = @_;
+
+    # TMP, schema
+    my $tx_action = $args{-tx_action} // '';
+    my $path      = $args{path};
+    defined($path) or return [400, "Please specify path"];
+    my $allow_sym = $args{allow_symlink} // 0;
+
+    my $is_sym    = (-l $path);
+    my $exists    = $is_sym || (-e _);
+    my $is_file   = (-f _);
+    my $is_sym_to_file = $is_sym && (-f $path);
+
+    my @undo;
+
+    #$log->tracef("path=%s, exists=%s, is_file=%s, allow_sym=%s, is_sym_to_file=%s", $path, $exists, $is_file, $allow_sym, $is_sym_to_file);
+    if ($tx_action eq 'check_state') {
+        return [412, "Not a file"] if $exists &&
+            !($is_file || $allow_sym && $is_sym_to_file);
+        if ($exists) {
+            if (!$args{-confirm} && (defined($args{orig_content}) ||
+                                         defined($args{orig_content_md5}))) {
+                if (defined $args{orig_content}) {
+                    require File::Slurp;
+                    my $ct = File::Slurp::read_file($path, err_mode=>'quiet');
+                    return [500, "Can't read file $path: $!"]
+                        unless defined($ct);
+                    return [331, "File $path has changed content, confirm ".
+                                "delete?"] if $ct ne $args{orig_content};
+                }
+                if (defined $args{orig_content_md5}) {
+                    require Digest::MD5;
+                    return [500, "Can't open file $path: $!"]
+                        unless open my($fh), "<", $path;
+                    my $ctx = Digest::MD5->new;
+                    $ctx->addfile($fh);
+                    return [331, "File $path has changed content, confirm ".
+                                "delete?"]
+                        if $ctx->hexdigest ne $args{orig_content_md5};
+                }
+            }
+            $log->info("nok: File $path should be removed");
+            push @undo, (
+                ['File::Trash::Undoable::untrash' => {path=>$path}],
+            );
+        }
+        if (@undo) {
+            return [200, "Fixable", undef, {undo_actions=>\@undo}];
+        } else {
+            return [304, "Fixed"];
+        }
+    } elsif ($tx_action eq 'fix_state') {
+        return File::Trash::Undoable::trash(
+            -tx_action=>'fix_state', path=>$path);
     }
     [400, "Invalid -tx_action"];
 }
@@ -584,27 +696,6 @@ sub __build_steps {
 # OLD
 
 our $steps = {
-        } elsif ($step->[0] eq 'rmfile') {
-            $log->info("Removing file $path ...");
-            # will only delete if content is unchanged from time of create,
-            # content is represented by hash
-            if ((-l $path) || (-e _)) {
-                my $ct = read_file($path, err_mode=>'quiet');
-                if (!defined($ct)) {
-                    $err = "Can't read file: $!";
-                } else {
-                    my $ct_hash = md5_hex($ct);
-                    if (defined($step->[1]) && $ct_hash ne $step->[1]) {
-                        $log->warn("File content has changed, not removing");
-                    } else {
-                        if (unlink $path) {
-                            unshift @$undo_steps, ["create", \$ct];
-                        } else {
-                            $err = "Can't unlink $path: $!";
-                        }
-                    }
-                }
-            }
         } elsif ($step->[0] eq 'rmdir') {
             $log->info("Removing dir $path ...");
             if ((-l $path) || (-e _)) {
@@ -883,36 +974,17 @@ _
     steps => $steps,
 );
 
-use Digest::MD5 qw(md5_hex);
 use File::Slurp;
 
 1;
 # ABSTRACT: Setup file (existence, mode, permission, content)
 
-=head1 SYNOPSIS
-
- use Setup::File 'setup_file';
-
- # simple usage (doesn't save undo data)
- my $res = setup_file path => '/etc/rc.local',
-                      should_exist => 1,
-                      gen_content_code => sub { \("#!/bin/sh\n") },
-                      owner => 'root', group => 0,
-                      mode => '+x';
- die unless $res->[0] == 200 || $res->[0] == 304;
-
- # perform setup and save undo data (undo data should be serializable)
- $res = setup_file ..., -undo_action => 'do';
- die unless $res->[0] == 200 || $res->[0] == 304;
- my $undo_data = $res->[3]{undo_data};
-
- # perform undo
- $res = setup_file ..., -undo_action => "undo", -undo_data=>$undo_data;
- die unless $res->[0] == 200 || $res->[0] == 304;
-
-
 =head1 SEE ALSO
 
 L<Setup>
+
+L<Setup::File::Dir>
+
+L<Setup::File::Symlink>
 
 =cut
