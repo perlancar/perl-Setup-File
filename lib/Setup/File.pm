@@ -682,7 +682,7 @@ sub mkfile {
         my $res;
         if (defined $args{check_content_func}) {
             no strict 'refs';
-            $fix_content = !\&{$args{check_content_func}}->(\$ct);
+            $fix_content = !(*{$args{check_content_func}}{CODE}->(\$ct));
         } elsif (defined $args{content_md5}) {
             $fix_content = Digest::MD5::md5_hex($ct) ne $args{content_md5};
         } elsif (defined $args{content}) {
@@ -708,7 +708,7 @@ sub mkfile {
             my $ct = "";
             if (defined $args{gen_content_func}) {
                 no strict 'refs';
-                $ct = \&{$args{gen_content_func}}->(\$ct);
+                $ct = *{$args{gen_content_func}}{CODE}->(\$ct);
             } elsif (defined $args{content}) {
                 $ct = $args{content};
             }
@@ -736,7 +736,7 @@ sub mkfile {
             my $ct = "";
             if (defined $args{gen_content_func}) {
                 no strict 'refs';
-                $ct = \&{$args{gen_content_func}}->(\$ct);
+                $ct = *{$args{gen_content_func}}{CODE}->(\$ct);
             } elsif (defined $args{content}) {
                 $ct = $args{content};
             }
