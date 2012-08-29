@@ -496,6 +496,10 @@ Alternatively, you can use `orig_content` (for shorter content).
 _
             schema => 'str',
         },
+        suffix => {
+            summary => 'Use this suffix when trashing',
+            schema => 'str',
+        },
     },
     features => {
         tx => {v=>2},
@@ -512,6 +516,7 @@ sub rmfile {
     my $path      = $args{path};
     defined($path) or return [400, "Please specify path"];
     my $allow_sym = $args{allow_symlink} // 0;
+    my $suffix    = $args{suffix} // substr($taid,0,8);
 
     my $is_sym    = (-l $path);
     my $exists    = $is_sym || (-e _);
@@ -549,7 +554,7 @@ sub rmfile {
             $log->info("nok: File $path should be removed");
             push @undo, (
                 ['File::Trash::Undoable::untrash' =>
-                     {path=>$path, suffix=>substr($taid,0,8)}],
+                     {path=>$path, suffix=>$suffix}],
             );
         }
         if (@undo) {
@@ -559,7 +564,7 @@ sub rmfile {
         }
     } elsif ($tx_action eq 'fix_state') {
         return File::Trash::Undoable::trash(
-            -tx_action=>'fix_state', suffix=>substr($taid,0,8), path=>$path);
+            -tx_action=>'fix_state', suffix=>$suffix, path=>$path);
     }
     [400, "Invalid -tx_action"];
 }
@@ -694,7 +699,8 @@ sub mkfile {
                 push @undo, (
                     ["File::Trash::Undoable::untrash",
                      {path=>$path, suffix=>substr($taid,0,8)}],
-                    ["File::Trash::Undoable::trash", {path=>$path}],
+                    ["File::Trash::Undoable::trash",
+                     {path=>$path, suffix=>substr($taid,0,8)."n"}],
                 );
             }
         } else {
@@ -707,7 +713,9 @@ sub mkfile {
                 $ct = $args{content};
             }
             my $md5 = Digest::MD5::md5_hex($ct);
-            push @undo, [rmfile => {path => $path, orig_content_md5=>$md5}];
+            push @undo, [rmfile =>
+                             {path => $path, suffix=>substr($taid,0,8)."n",
+                              orig_content_md5=>$md5}];
         }
         if (@undo) {
             return [200, "Fixable", undef, {undo_actions=>\@undo}];
