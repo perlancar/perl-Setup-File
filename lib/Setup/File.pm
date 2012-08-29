@@ -937,13 +937,8 @@ content/ownership/mode has changed, function will request confirmation).
 _
     args     => {
         path => {
-            schema  => ['str*' => { match => qr!^/! }],
+            schema  => ['str*'],
             summary => 'Path to file',
-            description => <<'_',
-
-File path needs to be absolute so it's normalized.
-
-_
             req => 1,
             pos => 0,
         },
@@ -1050,6 +1045,88 @@ _
 };
 sub setup_file {
     _setup_file_or_dir(@_, -which => 'file');
+}
+
+$SPEC{setup_dir} = {
+    v           => 1.1,
+    summary     => "Setup directory (existence, mode, permission)",
+    description => <<'_',
+
+On do, will create directory (if it doesn't already exist) and fix its
+mode/permission.
+
+On undo, will restore old mode/permission (and delete directory if it is empty
+and was created by this function). If directory was created by this function but
+is not empty, will return status 331 to ask for confirmation (`-confirm`). If
+confirmation is set to true, will delete non-empty directory.
+
+Will *not* create intermediate directories like "mkdir -p". Create intermediate
+directories using several setup_dir() invocation.
+
+_
+    args     => {
+        path => {
+            schema  => ['str*'],
+            summary => 'Path to file',
+            req => 1,
+            pos => 0,
+        },
+        should_exist => {
+            schema      => ['bool' => {}],
+            summary     => 'Whether dir should exist',
+            description => <<'_',
+
+If undef, dir need not exist. If set to 0, dir must not exist and will be
+deleted if it does. If set to 1, dir must exist and will be created if it
+doesn't.
+
+_
+        },
+        mode => {
+            schema  => ['str' => {}],
+            summary => 'Expected permission mode',
+        },
+        owner => {
+            schema  => ['str' => {}],
+            summary => 'Expected owner',
+        },
+        group => {
+            schema   => ['str' => {}],
+            summary => 'Expected group',
+        },
+        allow_symlink => {
+            schema      => ['bool*' => {default=>1}],
+            summary     => 'Whether symlink is allowed',
+            description => <<'_',
+
+If existing dir is a symlink then if allow_symlink is false then it is an
+unacceptable condition (the symlink will be replaced if replace_symlink is
+true).
+
+Note: if you want to setup symlink instead, use Setup::Symlink.
+
+_
+        },
+        replace_symlink => {
+            schema  => ['bool*' => {default=>1}],
+            summary => "Replace existing symlink if it needs to be replaced",
+        },
+        replace_file => {
+            schema  => ['bool*' => {default=>1}],
+            summary => "Replace existing file if it needs to be replaced",
+        },
+        replace_dir => {
+            schema  => ['bool*' => {default=>1}],
+            summary => "Replace existing dir if it needs to be replaced",
+        },
+    },
+    features => {
+        tx         => {v=>2},
+        idempotent => 1,
+    },
+};
+sub setup_dir  {
+    Setup::File::_setup_file_or_dir(@_, -which => 'dir');
 }
 
 1;
