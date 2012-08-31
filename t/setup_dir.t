@@ -5,6 +5,7 @@ use strict;
 use warnings;
 use FindBin '$Bin';
 use lib $Bin, "$Bin/t";
+use Log::Any '$log';
 
 use File::chdir;
 use File::Path qw(remove_tree);
@@ -124,28 +125,3 @@ if (Test::More->builder->is_passing) {
 } else {
     diag "there are failing tests, not deleting test data dir $tmpdir";
 }
-__END__
-#!perl
-
-use 5.010;
-use strict;
-use warnings;
-
-use FindBin '$Bin';
-use lib $Bin, "$Bin/t";
-
-use File::Slurp;
-use Test::More 0.96;
-require "testlib.pl";
-
-use vars qw($tmp_dir $undo_data);
-
-setup();
-
-goto DONE_TESTING;
-
-# XXX: test symbolic mode
-# XXX: test should_exist = undef
-
-DONE_TESTING:
-teardown();

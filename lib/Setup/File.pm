@@ -171,7 +171,7 @@ sub mkdir {
             return [304, "Fixed"];
         }
     } elsif ($tx_action eq 'fix_state') {
-        if (CORE::mkdir($path)) {
+        if (CORE::mkdir($path, 0755)) {
             return [200, "Fixed"];
         } else {
             return [500, "Can't symlink: $!"];
@@ -263,7 +263,7 @@ sub chmod {
         if (@undo) {
             return [200, "Fixable", undef, {undo_actions=>\@undo}];
         } else {
-            return [304, "Fixed"];
+            return [304, "Fixed, mode already ".sprintf("%04o", $cur_mode)];
         }
     } elsif ($tx_action eq 'fix_state') {
         if (CORE::chmod($want_mode, $path)) {
