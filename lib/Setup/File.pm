@@ -745,7 +745,7 @@ sub mkfile {
                 $ct = $args{content};
             }
             if (File::Slurp::write_file($path, {errmode=>'quiet'}, $ct)) {
-                chmod 0644, $path;
+                CORE::chmod(0644, $path);
                 return [200, "OK"];
             } else {
                 return [500, "Can't write file $path: $!"];
