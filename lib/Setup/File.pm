@@ -16,8 +16,6 @@ our @EXPORT_OK = qw(setup_file);
 
 our %SPEC;
 
-my $res;
-
 $SPEC{rmdir} = {
     v           => 1.1,
     summary     => 'Delete directory',
