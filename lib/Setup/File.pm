@@ -269,7 +269,7 @@ sub chmod {
             $log->infof("(DRY) Chmod %s to %04o ...", $path, $want_mode)
                 if $dry_run;
             return [200, "Path $path needs to be chmod'ed to ".
-                        sprintf("%04o", $cur_mode), undef,
+                        sprintf("%04o", $want_mode), undef,
                     {undo_actions=>\@undo}];
         } else {
             return [304, "Fixed, mode already ".sprintf("%04o", $cur_mode)];
