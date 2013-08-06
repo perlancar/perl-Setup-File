@@ -1,6 +1,6 @@
 package Setup::File;
 
-use 5.010;
+use 5.010001;
 use strict;
 use warnings;
 use Log::Any '$log';
@@ -137,6 +137,10 @@ _
             summary => 'Whether to regard symlink to a directory as directory',
             schema => 'str*',
         },
+        mode => {
+            summary => 'Set mode for the newly created directory',
+            schema => 'str*',
+        },
     },
     features => {
         tx => {v=>2},
@@ -152,6 +156,9 @@ sub mkdir {
     my $path      = $args{path};
     defined($path) or return [400, "Please specify path"];
     my $allow_sym = $args{allow_symlink} // 0;
+    my $mode      = $args{mode} // 0755; # XXX use umask
+    return [412, "Invalid mode '$mode', please use numeric only"]
+        if $mode =~ /\D/;
 
     my $is_sym    = (-l $path);
     my $exists    = $is_sym || (-e _);
@@ -174,10 +181,10 @@ sub mkdir {
         }
     } elsif ($tx_action eq 'fix_state') {
         $log->info("Creating dir $path ...");
-        if (CORE::mkdir($path, 0755)) {
+        if (CORE::mkdir($path, $mode)) {
             return [200, "Fixed"];
         } else {
-            return [500, "Can't symlink: $!"];
+            return [500, "Can't mkdir $path: $!"];
         }
     }
     [400, "Invalid -tx_action"];
@@ -249,7 +256,8 @@ sub chmod {
         return [331, "File $path has changed permission mode, confirm chmod?"];
     }
     if ($want_mode =~ /\D/) {
-        return [412, "Symbolic mode requires path to exist"] unless $exists;
+        return [412, "Symbolic mode ($want_mode) requires path $path to exist"]
+            unless $exists;
         $want_mode = File::chmod::getchmod($want_mode, $path);
     }
 
@@ -279,7 +287,7 @@ sub chmod {
         if (CORE::chmod($want_mode, $path)) {
             return [200, "Fixed"];
         } else {
-            return [500, "Can't chmod: $!"];
+            return [500, "Can't chmod $path, $want_mode: $!"];
         }
     }
     [400, "Invalid -tx_action"];
@@ -425,7 +433,7 @@ sub chown {
     #$log->tracef("path=%s, cur_uid=%s, cur_gid=%s, want_uid=%s, want_uname=%s, want_gid=%s, want_gname=%s", $cur_uid, $cur_gid, $want_uid, $want_uname, $want_gid, $want_gname);
     if ($tx_action eq 'check_state') {
         my @undo;
-        return [412, "Doesn't exist"] if !$exists;
+        return [412, "$path doesn't exist"] if !$exists;
         if (defined($want_uid) && $cur_uid != $want_uid ||
                 defined($want_gid) && $cur_gid != $want_gid) {
             $log->infof("(DRY) Chown %s to (%s, %s)",
@@ -459,7 +467,8 @@ sub chown {
         if ($res) {
             return [200, "Fixed"];
         } else {
-            return [500, "Can't chown: $!"];
+            return [500, "Can't chown $path, ".($want_uid // -1).", ".
+                        ($want_gid // -1).": $!"];
         }
     }
     [400, "Invalid -tx_action"];
@@ -772,7 +781,7 @@ sub mkfile {
                 CORE::chmod(0644, $path);
                 return [200, "OK"];
             } else {
-                return [500, "Can't write_file(): $!"];
+                return [500, "Can't write_file($path): $!"];
             }
         } else {
             # shouldn't reach here
@@ -865,7 +874,8 @@ sub _setup_file_or_dir {
 
         if (!$allow_sym && $is_sym) {
             if (!$replace_sym) {
-                return [412, "must replace symlink but instructed not to"];
+                return [412,
+                        "must replace symlink $path but instructed not to"];
             }
             $log->info("(DRY) Replacing symlink $path with $which ...")
                 if $dry_run;
@@ -873,7 +883,7 @@ sub _setup_file_or_dir {
             unshift @undo, $act_untrash;
         } elsif ($is_dir && $which eq 'file') {
             if (!$replace_dir) {
-                return [412, "must replace dir but instructed not to"];
+                return [412, "must replace dir $path but instructed not to"];
             }
             $log->info("(DRY) Replacing file $path with $which ...")
                 if $dry_run;
@@ -881,7 +891,7 @@ sub _setup_file_or_dir {
             unshift @undo, $act_untrash;
         } elsif (!$is_dir && $which eq 'dir') {
             if (!$replace_file) {
-                return [412, "must replace file but instructed not to"];
+                return [412, "must replace file $path but instructed not to"];
             }
             $log->info("(DRY) Replacing dir $path with $which ...")
                 if $dry_run;
@@ -915,11 +925,9 @@ sub _setup_file_or_dir {
         if (defined $args{mode}) {
             my $cur_mode = @st ? $st[2] & 07777 : undef;
             push @do, ["chmod" => {
-                path=>$path, allow_symlink=>$allow_sym,
-                mode=>$args{mode}}];
+                path=>$path, mode=>$args{mode}}];
             unshift @undo, ["chmod" => {
-                path=>$path, allow_symlink=>$allow_sym,
-                mode=>$cur_mode}] if defined($cur_mode);
+                path=>$path, mode=>$cur_mode}] if defined($cur_mode);
         }
 
         if (defined $args{owner}) {

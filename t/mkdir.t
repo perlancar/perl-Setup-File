@@ -82,6 +82,8 @@ subtest "symlink tests" => sub {
     );
 };
 
+# XXX test mode
+
 DONE_TESTING:
 done_testing();
 if (Test::More->builder->is_passing) {
