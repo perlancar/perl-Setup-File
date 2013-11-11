@@ -30,8 +30,8 @@ Revision history for Setup-File
 
 0.14    2012-03-28 (SHARYANTO)
 
-        No functional changes. Split specification to Setup dist. Split
-        Test::Setup to its own dist.
+        - No functional changes. Split specification to Setup dist. Split
+          Test::Setup to its own dist.
 
 
 0.13    2012-03-28 (SHARYANTO)
@@ -50,29 +50,30 @@ Revision history for Setup-File
 
 0.12    2012-03-02 (SHARYANTO)
 
-        No functional changes. Change references to Sub::Spec now to Rinci.
+        - No functional changes. Change references to Sub::Spec now to Rinci.
 
 
 0.11    2012-01-26 (SHARYANTO)
 
-        A small fix: make it clear that gen_content_code and check_content_code
-        work with *reference* to content (but gen_content_code is also allowed
-        to return the actual content [undocumented], for flexibility).
+        - A small fix: make it clear that gen_content_code and
+          check_content_code work with *reference* to content (but
+          gen_content_code is also allowed to return the actual content
+          [undocumented], for flexibility).
 
 
 0.10    2011-12-29 (SHARYANTO)
 
-        No functional changes. Update/small fixes to documentation.
+        - No functional changes. Update/small fixes to documentation.
 
 
 0.09    2011-05-18 (SHARYANTO)
 
-        No functional changes. Tweak log messages.
+        - No functional changes. Tweak log messages.
 
 
 0.08    2011-05-18 (SHARYANTO)
 
-        No functional changes. Changed logging levels.
+        - No functional changes. Changed logging levels.
 
 
 0.07    2011-05-18 (SHARYANTO)
@@ -85,7 +86,7 @@ Revision history for Setup-File
 
 0.06    2011-05-17 (SHARYANTO)
 
-        No functional changes. POD touches/fixes, improve error message.
+        - No functional changes. POD touches/fixes, improve error message.
 
 
 0.05    2011-04-28 (SHARYANTO)
@@ -116,7 +117,7 @@ Revision history for Setup-File
 
 0.03    2011-04-21 (SHARYANTO)
 
-        No functional changes.
+        - No functional changes.
 
         [INCOMPATIBLE CHANGE]
 
