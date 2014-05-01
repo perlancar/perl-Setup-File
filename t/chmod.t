@@ -70,46 +70,6 @@ test_tx_action(
     before_undo => sub { chmod 0777, "p" },
 );
 
-goto DONE_TESTING; # TMP
-
-subtest "symlink tests" => sub {
-    plan skip_all => "symlink() not available" unless eval { symlink "",""; 1 };
-
-    test_tx_action(
-        name        => "allow_symlink=0 (the default)",
-        tmpdir      => $tmpdir,
-        f           => 'Setup::File::mkdir',
-        args        => {path=>"s"},
-        reset_state => sub {
-            remove_tree "p";
-            mkdir "p"; chmod 0755, "p"; symlink "p", "s";
-        },
-        status      => 412,
-    );
-    test_tx_action(
-        name        => "allow_symlink=1 (fixed)",
-        tmpdir      => $tmpdir,
-        f           => 'Setup::File::mkdir',
-        args        => {path=>"s", mode=>0775, allow_symlink=>1},
-        reset_state => sub {
-            remove_tree "p";
-            mkdir "p"; chmod 0775, "p"; symlink "p", "s";
-        },
-        status      => 304,
-    );
-    # XXX why fail?
-    #test_tx_action(
-    #    name        => "allow_symlink=1 (fixable)",
-    #    tmpdir      => $tmpdir,
-    #    f           => 'Setup::File::mkdir',
-    #    args        => {path=>"s", mode=>0775, allow_symlink=>1},
-    #    reset_state => sub {
-    #        remove_tree "p";
-    #        mkdir "p"; chmod 0755, "p"; symlink "p", "s";
-    #    },
-    #);
-};
-
 DONE_TESTING:
 done_testing();
 if (Test::More->builder->is_passing) {
