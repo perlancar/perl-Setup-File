@@ -17,6 +17,8 @@ sub setup_dir {
 1;
 # ABSTRACT: Setup directory (existence, mode, permission)
 
+=for Pod::Coverage ^(setup_dir)$
+
 =head1
 
 Moved to

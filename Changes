@@ -1,5 +1,12 @@
 Revision history for Setup-File
 
+0.18    2014-05-02 (SHARYANTO)
+
+        - No functional changes.
+
+        - Make tests pass again by requiring fixed Perinci::Tx::Manager 0.49.
+
+
 0.17    2012-09-04 (SHARYANTO)
 
         - Adjust to Rinci 1.1.29 and Perinci::Tx::Manager 0.40 (descriptive

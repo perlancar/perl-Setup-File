@@ -13,6 +13,7 @@ our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw(setup_file);
 
 # VERSION
+# DATE
 
 our %SPEC;
 
