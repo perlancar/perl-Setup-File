@@ -1,7 +1,6 @@
 #!perl
 
 use 5.010;
-use autodie;
 use strict;
 use warnings;
 use FindBin '$Bin';
@@ -85,7 +84,7 @@ test_tx_action(
 
 subtest "symlink tests" => sub {
     plan skip_all => "symlink() not available"
-        unless eval { no autodie; symlink "",""; 1 };
+        unless eval { symlink "",""; 1 };
 
     test_tx_action(
         name        => "allow_symlink=0 (the default)",
