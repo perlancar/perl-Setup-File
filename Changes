@@ -1,5 +1,12 @@
 Revision history for Setup-File
 
+0.19    2014-05-02 (SHARYANTO)
+
+        - No functional changes.
+
+        - Remove use of autodie to avoid failure reports [CT].
+
+
 0.18    2014-05-02 (SHARYANTO)
 
         - No functional changes.
