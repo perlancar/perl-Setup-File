@@ -9,7 +9,7 @@ use lib "$Bin/lib";
 use Digest::MD5 qw(md5_hex);
 use File::chdir;
 use File::Path qw(remove_tree);
-use File::Slurp;
+use File::Slurp::Tiny qw(write_file);
 use File::Temp qw(tempdir);
 use Setup::File;
 use Test::More 0.98;
