@@ -1,5 +1,13 @@
 Revision history for Setup-File
 
+0.20    2014-12-05 (PERLANCAR)
+
+	- No functional changes.
+
+	- Use new name of renamed module SHARYANTO::File::Util ->
+	  File::MoreUtil.
+
+
 0.19    2014-05-02 (SHARYANTO)
 
         - No functional changes.
