@@ -1,19 +1,19 @@
 package Setup::File;
 
+# DATE
+# VERSION
+
 use 5.010001;
 use strict;
 use warnings;
 use Log::Any '$log';
 
 use File::Trash::Undoable;
-use SHARYANTO::File::Util qw(dir_empty);
+use File::MoreUtil qw(dir_empty);
 
 require Exporter;
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw(setup_file);
-
-# VERSION
-# DATE
 
 our %SPEC;
 

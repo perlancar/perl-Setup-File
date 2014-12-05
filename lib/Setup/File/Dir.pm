@@ -1,12 +1,13 @@
 package Setup::File::Dir;
 
+# DATE
+# VERSION
+
 use Setup::File;
 
 require Exporter;
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw(setup_dir);
-
-# VERSION
 
 # now moved to Setup::File
 
