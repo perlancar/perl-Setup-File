@@ -17,6 +17,11 @@ our @EXPORT_OK = qw(setup_file);
 
 our %SPEC;
 
+$SPEC{':package'} = {
+    v => 1.1,
+    summary => 'Setup file (existence, mode, permission, content)',
+};
+
 $SPEC{rmdir} = {
     v           => 1.1,
     summary     => 'Delete directory',
@@ -1168,7 +1173,7 @@ sub setup_dir  {
 }
 
 1;
-# ABSTRACT: Setup file (existence, mode, permission, content)
+# ABSTRACT:
 
 =head1 FAQ
 
