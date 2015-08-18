@@ -5,7 +5,7 @@ use strict;
 use warnings;
 use FindBin '$Bin';
 use lib "$Bin/lib";
-use Log::Any '$log';
+use Log::Any::IfLOG '$log';
 
 use Digest::MD5 qw(md5_hex);
 use File::chdir;
