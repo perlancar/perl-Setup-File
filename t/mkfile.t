@@ -5,7 +5,6 @@ use strict;
 use warnings;
 use FindBin '$Bin';
 use lib "$Bin/lib";
-use Log::Any::IfLOG '$log';
 
 use Digest::MD5 qw(md5_hex);
 use File::chdir;
@@ -59,7 +58,6 @@ test_tx_action(
 
 sub _check_ct {
     my $ctr = shift;
-    $log->errorf("TMP:ct=%s=", $$ctr);
     $$ctr eq 'bar';
 }
 

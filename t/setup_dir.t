@@ -5,7 +5,6 @@ use strict;
 use warnings;
 use FindBin '$Bin';
 use lib $Bin, "$Bin/t";
-use Log::Any::IfLOG '$log';
 
 use File::chdir;
 use File::Path qw(remove_tree);
