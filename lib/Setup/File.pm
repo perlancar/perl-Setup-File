@@ -6,7 +6,7 @@ package Setup::File;
 use 5.010001;
 use strict;
 use warnings;
-use Log::Any::IfLOG '$log';
+use Log::ger;
 
 use File::Trash::Undoable;
 use File::MoreUtil qw(dir_empty);
@@ -101,7 +101,7 @@ sub rmdir {
                     }
                 }
             }
-            $log->info("(DRY) Removing dir $path ...") if $dry_run;
+            log_info("(DRY) Removing dir $path ...") if $dry_run;
             unshift @undo, (
                 ['File::Trash::Undoable::untrash' =>
                      {path=>$path, suffix=>substr($taid,0,8)}],
@@ -179,14 +179,14 @@ sub mkdir {
             unshift @undo, [rmdir => {path => $path}];
         }
         if (@undo) {
-            $log->info("(DRY) Creating dir $path ...") if $dry_run;
+            log_info("(DRY) Creating dir $path ...") if $dry_run;
             return [200, "Dir $path needs to be created", undef,
                     {undo_actions=>\@undo}];
         } else {
             return [304, "Dir $path already exists"];
         }
     } elsif ($tx_action eq 'fix_state') {
-        $log->info("Creating dir $path ...");
+        log_info("Creating dir $path ...");
         if (CORE::mkdir($path, $mode)) {
             return [200, "Fixed"];
         } else {
@@ -272,7 +272,7 @@ sub chmod {
         my @undo;
         return [412, "Path $path doesn't exist"] if !$exists;
         if ($cur_mode != $want_mode) {
-            $log->infof("(DRY) chmod %s to %04o ...", $path, $want_mode)
+            log_info("(DRY) chmod %s to %04o ...", $path, $want_mode)
                 if $dry_run;
             unshift @undo, [chmod => {
                 path => $path, mode=>$cur_mode, orig_mode=>$want_mode,
@@ -280,7 +280,7 @@ sub chmod {
             }];
         }
         if (@undo) {
-            $log->infof("(DRY) Chmod %s to %04o ...", $path, $want_mode)
+            log_info("(DRY) Chmod %s to %04o ...", $path, $want_mode)
                 if $dry_run;
             return [200, "Path $path needs to be chmod'ed to ".
                         sprintf("%04o", $want_mode), undef,
@@ -289,7 +289,7 @@ sub chmod {
             return [304, "Fixed, mode already ".sprintf("%04o", $cur_mode)];
         }
     } elsif ($tx_action eq 'fix_state') {
-        $log->infof("Chmod %s to %04o ...", $path, $want_mode);
+        log_info("Chmod %s to %04o ...", $path, $want_mode);
         if (CORE::chmod($want_mode, $path)) {
             return [200, "Fixed"];
         } else {
@@ -442,7 +442,7 @@ sub chown {
         return [412, "$path doesn't exist"] if !$exists;
         if (defined($want_uid) && $cur_uid != $want_uid ||
                 defined($want_gid) && $cur_gid != $want_gid) {
-            $log->infof("(DRY) Chown %s to (%s, %s)",
+            log_info("(DRY) Chown %s to (%s, %s)",
                         $path, $want_owner, $want_group) if $dry_run;
             unshift @undo, [chown => {
                 path  => $path,
@@ -463,7 +463,7 @@ sub chown {
         }
     } elsif ($tx_action eq 'fix_state') {
         my $res;
-        $log->infof("%schown %path to (%s, %s) ...", $follow_sym ? "" : "l",
+        log_info("%schown %path to (%s, %s) ...", $follow_sym ? "" : "l",
                     $path, $want_uid // -1, $want_gid // -1);
         if ($follow_sym) {
             $res = CORE::chown   ($want_uid // -1, $want_gid // -1, $path);
@@ -582,7 +582,7 @@ sub rmfile {
                         if $ctx->hexdigest ne $args{orig_content_md5};
                 }
             }
-            $log->info("(DRY) Removing file $path ...") if $dry_run;
+            log_info("(DRY) Removing file $path ...") if $dry_run;
             unshift @undo, (
                 ['File::Trash::Undoable::untrash' =>
                      {path=>$path, suffix=>$suffix}],
@@ -734,7 +734,7 @@ sub mkfile {
         my @undo;
         if ($exists) {
             if ($fix_content) {
-                $log->info("(DRY) Replacing file $path ...") if $dry_run;
+                log_info("(DRY) Replacing file $path ...") if $dry_run;
                 $msg = "File $path needs to be replaced";
                 unshift @undo, (
                     ["File::Trash::Undoable::untrash",
@@ -744,7 +744,7 @@ sub mkfile {
                 );
             }
         } else {
-            $log->info("(DRY) File $path should be created");
+            log_info("(DRY) File $path should be created");
             my $ct = "";
             if (defined $args{gen_content_func}) {
                 no strict 'refs';
@@ -753,7 +753,7 @@ sub mkfile {
                 $ct = $args{content};
             }
             my $md5 = Digest::MD5::md5_hex($ct);
-            $log->info("(DRY) Creating file $path ...") if $dry_run;
+            log_info("(DRY) Creating file $path ...") if $dry_run;
             $msg = "File $path needs to be created";
             unshift @undo, [rmfile =>
                                 {path => $path, suffix=>$suffix."n",
@@ -782,7 +782,7 @@ sub mkfile {
             } elsif (defined $args{content}) {
                 $ct = $args{content};
             }
-            $log->info("Creating file $path ...");
+            log_info("Creating file $path ...");
             if (eval { File::Slurp::Tiny::write_file($path, $ct); 1 }) {
                 CORE::chmod(0644, $path);
                 return [200, "OK"];
@@ -869,7 +869,7 @@ sub _setup_file_or_dir {
     {
         if (defined($should_exist) && !$should_exist) {
             if ($exists) {
-                $log->info("(DRY) Removing $which $path ...") if $dry_run;
+                log_info("(DRY) Removing $which $path ...") if $dry_run;
                 push    @do  , $act_trash;
                 unshift @undo, $act_untrash;
             }
@@ -883,7 +883,7 @@ sub _setup_file_or_dir {
                 return [412,
                         "must replace symlink $path but instructed not to"];
             }
-            $log->info("(DRY) Replacing symlink $path with $which ...")
+            log_info("(DRY) Replacing symlink $path with $which ...")
                 if $dry_run;
             push    @do  , $act_trash;
             unshift @undo, $act_untrash;
@@ -891,7 +891,7 @@ sub _setup_file_or_dir {
             if (!$replace_dir) {
                 return [412, "must replace dir $path but instructed not to"];
             }
-            $log->info("(DRY) Replacing file $path with $which ...")
+            log_info("(DRY) Replacing file $path with $which ...")
                 if $dry_run;
             push    @do  , $act_trash;
             unshift @undo, $act_untrash;
@@ -899,7 +899,7 @@ sub _setup_file_or_dir {
             if (!$replace_file) {
                 return [412, "must replace file $path but instructed not to"];
             }
-            $log->info("(DRY) Replacing dir $path with $which ...")
+            log_info("(DRY) Replacing dir $path with $which ...")
                 if $dry_run;
             push    @do  , $act_trash;
             unshift @undo, $act_untrash;
