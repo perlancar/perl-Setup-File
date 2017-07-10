@@ -564,8 +564,8 @@ sub rmfile {
             if (!$args{-confirm} && (defined($args{orig_content}) ||
                                          defined($args{orig_content_md5}))) {
                 if (defined $args{orig_content}) {
-                    require File::Slurp::Tiny;
-                    my $ct = eval { File::Slurp::Tiny::read_file($path) };
+                    require File::Slurper;
+                    my $ct = eval { File::Slurper::read_text($path) };
                     return [500, "Can't read file $path: $!"]
                         unless defined($ct);
                     return [331, "File $path has changed content, confirm ".
@@ -690,7 +690,7 @@ _
 };
 sub mkfile {
     require Digest::MD5;
-    require File::Slurp::Tiny;
+    require File::Slurper;
 
     my %args = @_;
 
@@ -715,7 +715,7 @@ sub mkfile {
 
     my $fix_content;
     if ($exists) {
-        my $ct = eval { File::Slurp::Tiny::read_file($path) };
+        my $ct = eval { File::Slurper::read_text($path) };
         return [500, "Can't read content of file $path: $!"]
             unless defined($ct);
         my $res;
@@ -783,7 +783,7 @@ sub mkfile {
                 $ct = $args{content};
             }
             log_info("Creating file $path ...");
-            if (eval { File::Slurp::Tiny::write_file($path, $ct); 1 }) {
+            if (eval { File::Slurper::write_text($path, $ct); 1 }) {
                 CORE::chmod(0644, $path);
                 return [200, "OK"];
             } else {
